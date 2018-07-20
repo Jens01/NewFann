@@ -19,7 +19,7 @@ type
     procedure FormDestroy(Sender: TObject);
   private
     Fann: TFannclass;
-    procedure TrainEvent(epochs: Integer; MSE: Single; var IsTrainBreak: Boolean);
+    procedure TrainEvent(epochs: Integer; MSE: Single);
     procedure ClearMemo;
   public
   end;
@@ -82,7 +82,7 @@ begin
   Fann.Free;
 end;
 
-procedure TForm1.TrainEvent(epochs: Integer; MSE: Single; var IsTrainBreak: Boolean);
+procedure TForm1.TrainEvent(epochs: Integer; MSE: Single);
 begin
   mmoEvent.Lines.Add(Format('No.:%5d MSE : %.6f', [epochs, MSE]));
 end;
