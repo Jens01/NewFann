@@ -11,8 +11,10 @@ uses
 
 type
 
-  TFannEvent = procedure(epochs: Integer; MSE: Single; var IsTrainBreak: Boolean) of object;
-  TFannCascadeEvent = procedure(epochs, total_epochs: Integer; MSE: Single; var IsTrainBreak: Boolean) of object;
+  TFannEvent = procedure(epochs: Integer; MSE: Single) of object;
+  TFannCascadeEvent = procedure(epochs, total_epochs: Integer; MSE: Single) of object;
+  TFannBreakEvent = procedure(epochs: Integer; MSE: Single; var IsTrainBreak: Boolean) of object;
+  TFannCascadeBreakEvent = procedure(epochs, total_epochs: Integer; MSE: Single; var IsTrainBreak: Boolean) of object;
 
   TTraindataclass = class
   strict private
@@ -31,6 +33,8 @@ type
     function GetTrainData: pfann_train_data;
     procedure SetNum_InputNeurons(const Value: Integer);
     procedure SetNum_OutputNeurons(const Value: Integer);
+    function GetInputSet(indx: Integer): TArray<Single>;
+    function GetOutputSet(indx: Integer): TArray<Single>;
   public
     constructor Create(Num_InputNeurons, Num_OutputNeurons: Integer); overload;
     constructor Create; overload;
@@ -45,40 +49,85 @@ type
     property NumOutput: Integer read FNum_OutputNeurons write SetNum_OutputNeurons;
     property TrainData: pfann_train_data read GetTrainData;
     property Inputs: TArray<Single> read GetInputs;
+    property InputSet[indx: Integer]: TArray<Single> read GetInputSet;
     property Outputs: TArray<Single> read GetOutputs;
+    property OutputSet[indx: Integer]: TArray<Single> read GetOutputSet;
   end;
 
   TTrainclass = class
   strict private
-    Fann: TFannclass;
-    Fepochs_max: Integer;
-    Fepochs_between_reports: Integer;
-    Fdesired_error: Single;
     FFannEvent: TFannEvent;
+    FFannBreakEvent: TFannBreakEvent;
+    FUseRandomWeigths: Boolean;
+    FWeigthsMax: Single;
+    FWeigthsMin: Single;
     procedure train_on_data(traindata: TTraindataclass);
     procedure test_on_data(traindata: TTraindataclass);
-  strict private // Cascade
-    Fneurons_between_reports: Integer;
-    Fmax_neurons: Integer;
-    FFannCascadeEvent: TFannCascadeEvent;
-    procedure train_cascade_on_data(traindata: TTraindataclass);
+    function Getbit_fail_limit: Single;
+    procedure Setbit_fail_limit(const Value: Single);
+    function Gettrain_stop_function: Integer;
+    procedure Settrain_stop_function(const Value: Integer);
+    function Getlearning_rate: Single;
+    procedure Setlearning_rate(const Value: Single);
+    function Gettraining_algorithm: Integer;
+    procedure Settraining_algorithm(const Value: Integer);
+    function Gettrain_error_function: Integer;
+    procedure Settrain_error_function(const Value: Integer);
+  protected
+    Fann: TFannclass;
+    Fdesired_error: Single;
+    Fepochs_max: Integer;
+    Fepochs_between_reports: Integer;
+    procedure SetWewights(traindata: TTraindataclass);
   public
     constructor Create(ann: TFannclass);
+    destructor Destroy; override;
     procedure Train(traindata: TTraindataclass);
     procedure TrainFromFannFile(Filename: string);
     procedure Test(traindata: TTraindataclass);
+    procedure TestFromFannFile(Filename: string);
     property desired_error: Single read Fdesired_error write Fdesired_error;
     property epochs_between_reports: Integer read Fepochs_between_reports write Fepochs_between_reports;
     property epochs_max: Integer read Fepochs_max write Fepochs_max;
+    property training_algorithm: Integer read Gettraining_algorithm write Settraining_algorithm;
+    property train_error_function: Integer read Gettrain_error_function write Settrain_error_function;
+    property bit_fail_limit: Single read Getbit_fail_limit write Setbit_fail_limit;
+    property train_stop_function: Integer read Gettrain_stop_function write Settrain_stop_function;
+    property learning_rate: Single read Getlearning_rate write Setlearning_rate;
+    property UseRandomWeigths: Boolean read FUseRandomWeigths write FUseRandomWeigths;
+    property WeigthsMax: Single read FWeigthsMax write FWeigthsMax;
+    property WeigthsMin: Single read FWeigthsMin write FWeigthsMin;
     property FannEvent: TFannEvent read FFannEvent write FFannEvent;
-  public // Cascade
+    property FannBreakEvent: TFannBreakEvent read FFannBreakEvent write FFannBreakEvent;
+  end;
+
+  TCascadeclass = class(TTrainclass)
+  strict private
+    FFannCascadeEvent: TFannCascadeEvent;
+    FFannCascadeBreakEvent: TFannCascadeBreakEvent;
+    Fmax_neurons: Integer;
+    procedure train_cascade_on_data(traindata: TTraindataclass);
+    function Getactivation_functions: TArray<Integer>;
+    procedure Setactivation_functions(const Value: TArray<Integer>);
+    function Getactivation_steepnesses: TArray<Single>;
+    procedure Setactivation_steepnesses(const Value: TArray<Single>);
+    function Getnum_candidate_groups: Integer;
+    procedure Setnum_candidate_groups(const Value: Integer);
+  public
+    constructor Create(ann: TFannclass); reintroduce;
     procedure TrainCascade(traindata: TTraindataclass);
-    property neurons_between_reports: Integer read Fneurons_between_reports write Fneurons_between_reports;
-    property max_neurons: Integer read Fmax_neurons write Fmax_neurons;
+    procedure TrainCascadeFromFannFile(Filename: string);
     property FannCascadeEvent: TFannCascadeEvent read FFannCascadeEvent write FFannCascadeEvent;
+    property FannCascadeBreakEvent: TFannCascadeBreakEvent read FFannCascadeBreakEvent write FFannCascadeBreakEvent;
+    property max_neurons: Integer read Fmax_neurons write Fmax_neurons;
+    property activation_functions: TArray<Integer> read Getactivation_functions write Setactivation_functions;
+    property activation_steepnesses: TArray<Single> read Getactivation_steepnesses write Setactivation_steepnesses;
+    property num_candidate_groups: Integer read Getnum_candidate_groups write Setnum_candidate_groups;
   end;
 
 implementation
+
+uses Vcl.Dialogs;
 
 function StringToArray(s: TArray<string>): TArray<Single>;
 var
@@ -126,6 +175,15 @@ begin
   Result := FInputs.ToArray;
 end;
 
+function TTraindataclass.GetInputSet(indx: Integer): TArray<Single>;
+var
+  i: Integer;
+begin
+  SetLength(Result, FNum_InputNeurons);
+  for i       := 0 to FNum_InputNeurons - 1 do
+    Result[i] := FInputs[indx * FNum_InputNeurons + i];
+end;
+
 function TTraindataclass.GetNumData: Integer;
 begin
   Result := IfThen(IsDataValid, NumDataInput, -1);
@@ -134,6 +192,15 @@ end;
 function TTraindataclass.GetOutputs: TArray<Single>;
 begin
   Result := FOutputs.ToArray;
+end;
+
+function TTraindataclass.GetOutputSet(indx: Integer): TArray<Single>;
+var
+  i: Integer;
+begin
+  SetLength(Result, FNum_OutputNeurons);
+  for i       := 0 to FNum_OutputNeurons - 1 do
+    Result[i] := FOutputs[indx * FNum_OutputNeurons + i];
 end;
 
 function TTraindataclass.GetTrainData: pfann_train_data;
@@ -268,12 +335,219 @@ constructor TTrainclass.Create(ann: TFannclass);
 begin
   inherited Create;
   Fann                    := ann;
-  Fepochs_between_reports := 1000;
-  Fepochs_max             := 500000;
-  Fdesired_error          := 0.0001;
+  Fepochs_between_reports := 500;
+  Fepochs_max             := 5000;
+  Fdesired_error          := 0.001;
+  FUseRandomWeigths       := True;
+  FWeigthsMax             := 0.1;
+  FWeigthsMin             := -0.1;
 end;
 
-procedure TTrainclass.train_cascade_on_data(traindata: TTraindataclass);
+procedure TTrainclass.train_on_data(traindata: TTraindataclass);
+// aus fann_train_data.c
+var
+  i: Integer;
+  error: Double;
+  _is_desired_error_reached: Boolean;
+  IsTrainingBreak: Boolean;
+begin
+  IsTrainingBreak := False;
+  i               := 0;
+  repeat
+
+    error := fann_train_epoch(Fann.ann, traindata.TrainData);
+
+    _is_desired_error_reached := Fann.is_error_reached(Fdesired_error);
+    if (Fepochs_between_reports > 0) and (((i + 1) mod Fepochs_between_reports = 0) or (i + 1 = Fepochs_max) or (i = 0) or
+      _is_desired_error_reached) then
+    begin
+      if Assigned(FFannEvent) then
+        FFannEvent(i, error);
+      if Assigned(FFannBreakEvent) then
+        FFannBreakEvent(i, error, IsTrainingBreak);
+    end;
+    Inc(i);
+  until _is_desired_error_reached or (i >= Fepochs_max) or IsTrainingBreak;
+end;
+
+destructor TTrainclass.Destroy;
+begin
+  inherited;
+end;
+
+function TTrainclass.Getbit_fail_limit: Single;
+begin
+  Result := fann.bit_fail_limit;
+end;
+
+procedure TTrainclass.Setbit_fail_limit(const Value: Single);
+begin
+  fann.bit_fail_limit := Value;
+end;
+
+function TTrainclass.Getlearning_rate: Single;
+begin
+  Result := fann.learning_rate;
+end;
+
+procedure TTrainclass.Setlearning_rate(const Value: Single);
+begin
+  fann.learning_rate := Value;
+end;
+
+function TTrainclass.Gettraining_algorithm: Integer;
+begin
+  Result := fann.training_algorithm;
+end;
+
+procedure TTrainclass.Settraining_algorithm(const Value: Integer);
+begin
+  fann.training_algorithm := Value;
+end;
+
+function TTrainclass.Gettrain_error_function: Integer;
+begin
+  Result := fann.train_error_function;
+end;
+
+procedure TTrainclass.Settrain_error_function(const Value: Integer);
+begin
+  fann.train_error_function := Value;
+end;
+
+function TTrainclass.Gettrain_stop_function: Integer;
+begin
+  Result := Fann.train_stop_function;
+end;
+
+procedure TTrainclass.Settrain_stop_function(const Value: Integer);
+begin
+  Fann.train_stop_function := Value;
+end;
+
+procedure TTrainclass.SetWewights(traindata: TTraindataclass);
+begin
+  if FUseRandomWeigths then
+    fann_randomize_weights(Fann.ann, FWeigthsMin, FWeigthsMax)
+  else
+    fann_init_weights(Fann.ann, TrainData.TrainData);
+end;
+
+procedure TTrainclass.Test(traindata: TTraindataclass);
+begin
+  if traindata.IsDataValid and Assigned(Fann) then
+    test_on_data(traindata);
+end;
+
+procedure TTrainclass.TestFromFannFile(Filename: string);
+var
+  td: TTraindataclass;
+begin
+  td := TTraindataclass.Create;
+  try
+    td.LoadFromFannFile(Filename);
+    Test(td);
+  finally
+    td.free;
+  end;
+end;
+
+procedure TTrainclass.Train(traindata: TTraindataclass);
+begin
+  if traindata.IsDataValid and Assigned(Fann) then
+  begin
+    SetWewights(traindata);
+    train_on_data(traindata);
+  end;
+end;
+
+procedure TTrainclass.TrainFromFannFile(Filename: string);
+var
+  td: TTraindataclass;
+begin
+  td := TTraindataclass.Create;
+  try
+    td.LoadFromFannFile(Filename);
+    Train(td);
+  finally
+    td.free;
+  end;
+end;
+
+procedure TTrainclass.test_on_data(traindata: TTraindataclass);
+var
+  i: Integer;
+begin
+  fann_reset_MSE(Fann.ann);
+  for i := 0 to traindata.NumData - 1 do
+  begin
+    fann_test(Fann.ann, @traindata.Inputs[i], @traindata.Outputs[i]);
+    if Assigned(FFannEvent) then
+      FFannEvent(i, Fann.MSE);
+  end;
+end;
+
+{ TCascadeclass }
+
+constructor TCascadeclass.Create(ann: TFannclass);
+begin
+  inherited Create(ann);
+  Fmax_neurons := 30;
+end;
+
+function TCascadeclass.Getactivation_functions: TArray<Integer>;
+begin
+  Result := Fann.activation_functions;
+end;
+
+procedure TCascadeclass.Setactivation_functions(const Value: TArray<Integer>);
+begin
+  Fann.activation_functions := Value;
+end;
+
+function TCascadeclass.Getactivation_steepnesses: TArray<Single>;
+begin
+  Result := Fann.activation_steepnesses;
+end;
+
+procedure TCascadeclass.Setactivation_steepnesses(const Value: TArray<Single>);
+begin
+  Fann.activation_steepnesses := Value;
+end;
+
+function TCascadeclass.Getnum_candidate_groups: Integer;
+begin
+  Result := fann.num_candidate_groups;
+end;
+
+procedure TCascadeclass.Setnum_candidate_groups(const Value: Integer);
+begin
+  fann.num_candidate_groups := Value;
+end;
+
+procedure TCascadeclass.TrainCascade(traindata: TTraindataclass);
+begin
+  if traindata.IsDataValid and Assigned(Fann) then
+  begin
+    SetWewights(traindata);
+    train_cascade_on_data(traindata);
+  end;
+end;
+
+procedure TCascadeclass.TrainCascadeFromFannFile(Filename: string);
+var
+  td: TTraindataclass;
+begin
+  td := TTraindataclass.Create;
+  try
+    td.LoadFromFannFile(Filename);
+    TrainCascade(td);
+  finally
+    td.free;
+  end;
+end;
+
+procedure TCascadeclass.train_cascade_on_data(traindata: TTraindataclass);
 // aus fann_cascade.c
 // fann_cascadetrain_on_data
 var
@@ -292,11 +566,13 @@ begin
     error                     := fann.MSE;
     _is_desired_error_reached := Fann.is_error_reached(Fdesired_error);
 
-    if (Fneurons_between_reports > 0) and (((i + 1) mod Fneurons_between_reports = 0) or (i + 1 = Fmax_neurons) or (i = 0) or
+    if (Fepochs_between_reports > 0) and (((i + 1) mod Fepochs_between_reports = 0) or (i + 1 = Fmax_neurons) or (i = 0) or
       _is_desired_error_reached) then
     begin
-      if Assigned(FFannEvent) then
-        FFannCascadeEvent(i, total_epochs, error, IsTrainingBreak);
+      if Assigned(FFannCascadeEvent) then
+        FFannCascadeEvent(i, total_epochs, error);
+      if Assigned(FFannCascadeBreakEvent) then
+        FFannCascadeBreakEvent(i, total_epochs, error, IsTrainingBreak);
     end;
 
     IsBreak := _is_desired_error_reached or IsTrainingBreak;
@@ -324,68 +600,6 @@ begin
   // This is ONLY done in the end of cascade training,
   // since there is no need for them during training.
   fann_set_shortcut_connections(Fann.ann);
-end;
-
-procedure TTrainclass.train_on_data(traindata: TTraindataclass);
-// aus fann_train_data.c
-var
-  i: Integer;
-  error: Single;
-  _is_desired_error_reached: Boolean;
-  IsTrainingBreak: Boolean;
-begin
-  IsTrainingBreak := False;
-  i               := 0;
-  repeat
-    error                     := fann_train_epoch(Fann.ann, traindata.TrainData);
-    _is_desired_error_reached := Fann.is_error_reached(Fdesired_error);
-    if (Fepochs_between_reports > 0) and (((i + 1) mod Fepochs_between_reports = 0) or (i + 1 = Fepochs_max) or (i = 0) or
-      _is_desired_error_reached) then
-    begin
-      if Assigned(FFannEvent) then
-        FFannEvent(i, error, IsTrainingBreak);
-    end;
-    Inc(i);
-  until _is_desired_error_reached or (i >= Fepochs_max) or IsTrainingBreak;
-end;
-
-procedure TTrainclass.Test(traindata: TTraindataclass);
-begin
-  if traindata.IsDataValid and Assigned(Fann) then
-    test_on_data(traindata);
-end;
-
-procedure TTrainclass.Train(traindata: TTraindataclass);
-begin
-  if traindata.IsDataValid and Assigned(Fann) then
-    train_on_data(traindata);
-end;
-
-procedure TTrainclass.TrainCascade(traindata: TTraindataclass);
-begin
-  train_cascade_on_data(traindata);
-end;
-
-procedure TTrainclass.TrainFromFannFile(Filename: string);
-var
-  td: TTraindataclass;
-begin
-  td := TTraindataclass.Create;
-  try
-    td.LoadFromFannFile(Filename);
-    Train(td);
-  finally
-    td.free;
-  end;
-end;
-
-procedure TTrainclass.test_on_data(traindata: TTraindataclass);
-var
-  i: Integer;
-begin
-  fann_reset_MSE(Fann.ann);
-  for i := 0 to traindata.NumData - 1 do
-    fann_test(Fann.ann, @traindata.Inputs[i], @traindata.Outputs[i]);
 end;
 
 end.

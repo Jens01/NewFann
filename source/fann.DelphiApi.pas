@@ -7,7 +7,7 @@ unit fann.DelphiApi;
 interface
 
 uses
-  System.SysUtils, System.Classes, Fann.Api;
+  System.SysUtils, System.Classes, Fann.Api, Vcl.Dialogs;
 
 type
 
@@ -42,6 +42,51 @@ type
     property ToNeuron: TNeuron read FToNeuron;
     property Weight: Single read FWeight;
   end;
+
+Const
+  FANN_NETTYPE_LAYER = 0;
+  FANN_NETTYPE_SHORTCUT = 1;
+
+  FANN_TRAIN_INCREMENTAL = 0;
+  FANN_TRAIN_BATCH = 1;
+  FANN_TRAIN_RPROP = 2;
+  FANN_TRAIN_QUICKPROP = 3;
+  FANN_TRAIN_SARPROP = 4;
+
+  FANN_ERRORFUNC_LINEAR = 0;
+  FANN_ERRORFUNC_TANH = 1;
+
+  FANN_STOPFUNC_MSE = 0;
+  FANN_STOPFUNC_BIT = 1;
+
+  FANN_LINEAR = 0;
+  FANN_THRESHOLD = 1;
+  FANN_THRESHOLD_SYMMETRIC = 2;
+  FANN_SIGMOID = 3;
+  FANN_SIGMOID_STEPWISE = 4;
+  FANN_SIGMOID_SYMMETRIC = 5;
+  FANN_SIGMOID_SYMMETRIC_STEPWISE = 6;
+  FANN_GAUSSIAN = 7;
+  FANN_GAUSSIAN_SYMMETRIC = 8;
+  FANN_GAUSSIAN_STEPWISE = 9;
+  FANN_ELLIOT = 10;
+  FANN_ELLIOT_SYMMETRIC = 11;
+  FANN_LINEAR_PIECE = 12;
+  FANN_LINEAR_PIECE_SYMMETRIC = 13;
+  FANN_SIN_SYMMETRIC = 14;
+  FANN_COS_SYMMETRIC = 15;
+  FANN_SIN = 16;
+  FANN_COS = 17;
+  FANN_RELU = 18;
+  FANN_LEAKY_RELU = 19;
+
+  FANN_ACTIVATIONFUNC_NAMES: array of string = ['FANN_LINEAR', 'FANN_THRESHOLD', 'FANN_THRESHOLD_SYMMETRIC', 'FANN_SIGMOID',
+    'FANN_SIGMOID_STEPWISE', 'FANN_SIGMOID_SYMMETRIC', 'FANN_SIGMOID_SYMMETRIC_STEPWISE', 'FANN_GAUSSIAN',
+    'FANN_GAUSSIAN_SYMMETRIC', 'FANN_GAUSSIAN_STEPWISE', 'FANN_ELLIOT', 'FANN_ELLIOT_SYMMETRIC', 'FANN_LINEAR_PIECE',
+    'FANN_LINEAR_PIECE_SYMMETRIC', 'FANN_SIN_SYMMETRIC', 'FANN_COS_SYMMETRIC', 'FANN_SIN', 'FANN_COS', 'FANN_RELU',
+    'FANN_LEAKY_RELU'];
+
+type
 
   TFannclass = class
   private
@@ -117,14 +162,25 @@ type
     function GetNeuronCount(LayerIndx: Integer): Integer;
     function GetNeuronandBiasCount(LayerIndx: Integer): Integer;
     function Getnum_bit_fail: Integer;
+    function Getsarprop_step_error_shift: Single;
+    function Getsarprop_temperature: Single;
+    function Getsarprop_weight_decay_shift: Single;
+    procedure Setsarprop_step_error_shift(const Value: Single);
+    procedure Setsarprop_temperature(const Value: Single);
+    procedure Setsarprop_weight_decay_shift(const Value: Single);
+    function Getsarprop_step_error_threshold_factor: Single;
+    procedure Setsarprop_step_error_threshold_factor(const Value: Single);
   public
-    constructor Create(NeuronsPerLayer: TArray<Integer>; ConnectionRate: Single = 1); overload;
+    constructor Create(NeuronsPerLayer: TArray<Integer>; NetWorkType: Integer = FANN_NETTYPE_LAYER;
+      ConnectionRate: Single = 1); overload;
     constructor Create(Filename: string); overload;
     constructor Create(S: TStream); overload;
     destructor Destroy; override;
+    procedure FannSave(Filename: string);
     procedure SaveToStream(Stream: TStream);
     procedure LoadFromStream(Stream: TStream);
     function is_error_reached(Desired_Error: Single): Boolean;
+    procedure DefNeutronLayer(LayerIndx: Cardinal; Steppness: single; AcFuntion: Cardinal);
     function Run(Inputs: TArray<Single>): TArray<Single>;
     property ann: pfann read Fann;
     property training_algorithm: Tfann_train_enum read Gettraining_algorithm write Settraining_algorithm;
@@ -156,6 +212,11 @@ type
     property rprop_delta_min: Single read Getrprop_delta_min write Setrprop_delta_min;
     property rprop_delta_max: Single read Getrprop_delta_max write Setrprop_delta_max;
     property rprop_delta_zero: Single read Getrprop_delta_zero write Setrprop_delta_zero;
+    property sarprop_weight_decay_shift: Single read Getsarprop_weight_decay_shift write Setsarprop_weight_decay_shift;
+    property sarprop_step_error_threshold_factor: Single read Getsarprop_step_error_threshold_factor
+      write Setsarprop_step_error_threshold_factor;
+    property sarprop_step_error_shift: Single read Getsarprop_step_error_shift write Setsarprop_step_error_shift;
+    property sarprop_temperature: Single read Getsarprop_temperature write Setsarprop_temperature;
     // Cascade :
     property activation_steepnesses: TArray<Single> read Getactivation_steepnesses write Setactivation_steepnesses;
     property activation_functions: TArray<TEnumType> read Getactivation_functions write Setactivation_functions;
@@ -178,10 +239,23 @@ implementation
 
 { TFannclass }
 
-constructor TFannclass.Create(NeuronsPerLayer: TArray<Integer>; ConnectionRate: Single);
+constructor TFannclass.Create(NeuronsPerLayer: TArray<Integer>; NetWorkType: Integer; ConnectionRate: Single);
 begin
   inherited Create;
-  Fann := CreateStandard(NeuronsPerLayer, ConnectionRate);
+
+  case NetWorkType of
+    FANN_NETTYPE_LAYER:
+      Fann := CreateStandard(NeuronsPerLayer, ConnectionRate);
+    FANN_NETTYPE_SHORTCUT:
+      begin
+        if Length(NeuronsPerLayer) = 2 then
+          Fann := CreateShortCut(NeuronsPerLayer)
+        else
+          raise Exception.Create('Wrong NeuronsPerLayer -> 2');
+      end
+  else
+    raise Exception.Create('WrongNetworktype');
+  end;
 end;
 
 constructor TFannclass.Create(Filename: string);
@@ -206,10 +280,21 @@ begin
   Result := fann_create_sparse_array(ConnectionRate, Length(NeuronsPerLayer), PCardinal(NeuronsPerLayer));
 end;
 
+procedure TFannclass.DefNeutronLayer(LayerIndx: Cardinal; Steppness: single; AcFuntion: Cardinal);
+begin
+  fann_set_activation_function_layer(Fann, AcFuntion, LayerIndx);
+  fann_set_activation_steepness_layer(Fann, Steppness, LayerIndx);
+end;
+
 destructor TFannclass.Destroy;
 begin
   fann_destroy(Fann);
   inherited;
+end;
+
+procedure TFannclass.FannSave(Filename: string);
+begin
+  fann_save(Fann, PAnsiChar(AnsiString(FileName)));
 end;
 
 function TFannClass.Gettraining_algorithm: Tfann_train_enum;
@@ -473,9 +558,49 @@ begin
   fann_set_rprop_increase_factor(Fann, Value);
 end;
 
+procedure TFannclass.Setsarprop_step_error_shift(const Value: Single);
+begin
+  fann_set_sarprop_step_error_shift(fann, Value);
+end;
+
+function TFannclass.Getsarprop_step_error_shift: Single;
+begin
+  Result := fann_get_sarprop_step_error_shift(fann);
+end;
+
+procedure TFannclass.Setsarprop_temperature(const Value: Single);
+begin
+  fann_set_sarprop_temperature(Fann, Value);
+end;
+
+function TFannclass.Getsarprop_temperature: Single;
+begin
+  Result := fann_get_sarprop_temperature(Fann);
+end;
+
+procedure TFannclass.Setsarprop_weight_decay_shift(const Value: Single);
+begin
+  fann_set_sarprop_weight_decay_shift(Fann, Value);
+end;
+
+function TFannclass.Getsarprop_weight_decay_shift: Single;
+begin
+  Result := fann_get_sarprop_weight_decay_shift(Fann);
+end;
+
 function TFannclass.Getrprop_increase_factor: Single;
 begin
   Result := fann_get_rprop_increase_factor(Fann);
+end;
+
+procedure TFannclass.Setsarprop_step_error_threshold_factor(const Value: Single);
+begin
+  fann_set_sarprop_step_error_threshold_factor(Fann, Value);
+end;
+
+function TFannclass.Getsarprop_step_error_threshold_factor: Single;
+begin
+  Result := fann_get_sarprop_step_error_threshold_factor(Fann);
 end;
 
 function TFannclass.NeuronOfIndx(indx: Integer): TNeuron;
@@ -496,11 +621,12 @@ begin
     end;
 end;
 
+
 function TFannclass.Run(Inputs: TArray<Single>): TArray<Single>;
 var
   numin: Integer;
   numout: Integer;
-  Erg:pfann_type_array;
+  Erg: pfann_type_array;
   i: Integer;
 begin
   numin := fann_get_num_input(Fann);
@@ -508,8 +634,8 @@ begin
   begin
     numout := fann_get_num_output(Fann);
     SetLength(Result, numout);
-    Erg := fann_run(Fann, @Inputs[0]);
-    for i := 0 to numout-1 do
+    Erg   := fann_run(Fann, @Inputs[0]);
+    for i := 0 to numout - 1 do
     begin
       Result[i] := Erg^;
       Inc(Erg);
@@ -520,13 +646,19 @@ end;
 procedure TFannclass.SaveToStream(Stream: TStream);
 var
   w: TWriter;
-  i, c: Integer;
+  i, ii, c: Integer;
   iL, iE: Integer;
   LayerArray: TArray<Integer>;
   LayerBiasArray: TArray<Integer>;
   ConArray: TArray<Tfann_connection>;
   Neuron: TNeuron;
   ValuesSingle: TArray<Single>;
+
+  steepness: Single;
+  acFunc: Integer;
+  CN: Integer;
+  iLayer: pfann_layer;
+  iNeuron: pfann_neuron;
 begin
   W := TWriter.Create(Stream, $FF);
   try
@@ -571,6 +703,25 @@ begin
     W.WriteSingle(Getcandidate_limit);
     W.WriteSingle(Getweight_multiplier);
 
+    // Last Neuron
+    iLayer := fann.first_layer;
+    c      := fann.last_layer - Fann.first_layer;
+    for i  := 0 to c - 1 do
+    begin
+      CN      := iLayer.last_neuron - iLayer.first_neuron;
+      iNeuron := iLayer.first_neuron;
+      for ii  := 0 to CN - 1 do
+      begin
+        steepness := iNeuron.activation_steepness;
+        acFunc    := iNeuron.activation_function;
+        Inc(iNeuron);
+      end;
+      Inc(iLayer);
+    end;
+    W.WriteSingle(steepness);
+    W.WriteInteger(acFunc);
+    //
+
     LayerArray := Getactivation_functions;
     W.WriteInteger(Getactivation_functions_count);
     for i := 0 to Getactivation_functions_count - 1 do
@@ -611,7 +762,7 @@ var
   NP: Integer;
   LC: Integer;
   CR: Single;
-  i, c: Integer;
+  i, ii, c: Integer;
   iL, iE: Integer;
   S: string;
   Fnc: Integer;
@@ -624,6 +775,10 @@ var
 
   ValuesInt: TArray<Integer>;
   ValuesSingle: TArray<Single>;
+
+  CN: Integer;
+  iLayer: pfann_layer;
+  iNeuron, LastNeuron: pfann_neuron;
 begin
   R := TReader.Create(Stream, $FF);
   try
@@ -681,6 +836,24 @@ begin
     Setcandidate_limit(R.ReadSingle);
     Setweight_multiplier(R.ReadSingle);
 
+    // Last Neutron
+    iLayer := fann.first_layer;
+    c      := fann.last_layer - Fann.first_layer;
+    for i  := 0 to c - 1 do
+    begin
+      CN      := iLayer.last_neuron - iLayer.first_neuron;
+      iNeuron := iLayer.first_neuron;
+      for ii  := 0 to CN - 1 do
+      begin
+        LastNeuron := iNeuron;
+        Inc(iNeuron);
+      end;
+      Inc(iLayer);
+    end;
+    LastNeuron.activation_steepness := R.ReadSingle;
+    LastNeuron.activation_function  := R.ReadInteger;
+    //
+
     c := R.ReadInteger;
     SetLength(ValuesInt, c);
     for i          := 0 to c - 1 do
@@ -733,8 +906,9 @@ begin
   erg   := fann_get_cascade_activation_functions(Fann);
   for i := 0 to Length(Result) - 1 do
   begin
-    Result[i] := erg^;
-    Inc(erg);
+    Result[i] := erg[i];
+    // Result[i] := erg^;
+    // Inc(erg);
   end;
 end;
 
@@ -757,8 +931,9 @@ begin
   erg   := fann_get_cascade_activation_steepnesses(Fann);
   for i := 0 to Length(Result) - 1 do
   begin
-    Result[i] := erg^;
-    Inc(erg);
+    Result[i] := erg[i];
+    // Result[i] := erg^;
+    // Inc(erg);
   end;
 end;
 
