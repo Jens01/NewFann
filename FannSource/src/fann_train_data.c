@@ -17,6 +17,9 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
+#include <windows.h> // for EXCEPTION_ACCESS_VIOLATION
+#include <excpt.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -24,6 +27,15 @@
 
 #include "config.h"
 #include "fann.h"
+
+/*
+DWORD FilterFunction() 
+{ 
+    MessageBox(NULL, "", "", MB_OK);
+    return EXCEPTION_EXECUTE_HANDLER; 
+} 
+*/
+
 
 /*
  * Reads training data from a file. 
@@ -128,18 +140,19 @@ float fann_train_epoch_quickprop(struct fann *ann, struct fann_train_data *data)
 /*
  * Internal train function 
  */
+ 
 float fann_train_epoch_irpropm(struct fann *ann, struct fann_train_data *data)
-{
+{	
 	unsigned int i;
 
-	if(ann->prev_train_slopes == NULL)
+	if (ann->prev_train_slopes == NULL)
 	{
 		fann_clear_train_arrays(ann);
 	}
 
 	fann_reset_MSE(ann);
 
-	for(i = 0; i < data->num_data; i++)
+	for (i = 0; i < data->num_data; i++)
 	{
 		fann_run(ann, data->input[i]);
 		fann_compute_MSE(ann, data->output[i]);
@@ -149,7 +162,7 @@ float fann_train_epoch_irpropm(struct fann *ann, struct fann_train_data *data)
 
 	fann_update_weights_irpropm(ann, 0, ann->total_connections);
 
-	return fann_get_MSE(ann);
+	return fann_get_MSE(ann);   
 }
 
 /*
@@ -225,9 +238,11 @@ float fann_train_epoch_incremental(struct fann *ann, struct fann_train_data *dat
  */
 FANN_EXTERNAL float FANN_API fann_train_epoch(struct fann *ann, struct fann_train_data *data)
 {
+
 	if(fann_check_input_output_sizes(ann, data) == -1)
 		return 0;
-	
+ // __try {
+  	
 	switch (ann->training_algorithm)
 	{
 	case FANN_TRAIN_QUICKPROP:
@@ -241,7 +256,10 @@ FANN_EXTERNAL float FANN_API fann_train_epoch(struct fann *ann, struct fann_trai
 	case FANN_TRAIN_INCREMENTAL:
 		return fann_train_epoch_incremental(ann, data);
 	}
-	return 0;
+  
+  return 0;
+  
+//	}__except(FilterFunction()){  } 
 }
 
 FANN_EXTERNAL void FANN_API fann_train_on_data(struct fann *ann, struct fann_train_data *data,

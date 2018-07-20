@@ -1680,6 +1680,7 @@ struct fann *fann_allocate_structure(unsigned int num_layers)
 	ann->rprop_delta_min = 0.0;
 	ann->rprop_delta_max = 50.0;
 	ann->rprop_delta_zero = 0.1f;
+// MessageBox(NULL, "", "", MB_OK);
 	
  	/* Variables for use with SARPROP training (reasonable defaults) */
  	ann->sarprop_weight_decay_shift = -6.644f;

@@ -33,9 +33,10 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 __doublefann_h__ is not defined
 */
 #ifndef __doublefann_h__
-#define FANN_EXP(x) expf(x)
-#define FANN_SIN(x) sinf(x)
-#define FANN_COS(x) cosf(x)
+/* expf(x), sinf(x) and cosf(x)  -> exp(x), sin(x) and cos(x)  */
+#define FANN_EXP(x) exp(x)
+#define FANN_SIN(x) sin(x)
+#define FANN_COS(x) cos(x)
 #else
 #define FANN_EXP(x) exp(x)
 #define FANN_SIN(x) sin(x)

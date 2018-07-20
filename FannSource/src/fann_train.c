@@ -17,6 +17,8 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
+#include <windows.h> // for EXCEPTION_ACCESS_VIOLATION
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -25,6 +27,13 @@
 
 #include "config.h"
 #include "fann.h"
+
+DWORD FilterFunction() 
+{ 
+    MessageBox(NULL, TEXT("XX"), TEXT("XXX"), MB_OK);
+    
+    return EXCEPTION_EXECUTE_HANDLER; 
+} 
 
 /*#define DEBUGTRAIN*/
 
@@ -717,7 +726,7 @@ void fann_update_weights_irpropm(struct fann *ann, unsigned int first_weight, un
 	fann_type *prev_steps = ann->prev_steps;
 	fann_type *prev_train_slopes = ann->prev_train_slopes;
 
-	fann_type prev_step, slope, prev_slope, next_step, same_sign;
+	double prev_step, next_step, slope, prev_slope, same_sign;
 
 	float increase_factor = ann->rprop_increase_factor;	/*1.2; */
 	float decrease_factor = ann->rprop_decrease_factor;	/*0.5; */
@@ -728,12 +737,36 @@ void fann_update_weights_irpropm(struct fann *ann, unsigned int first_weight, un
 
 	for(; i != past_end; i++)
 	{
+ 
 		prev_step = fann_max(prev_steps[i], (fann_type) 0.0001);	/* prev_step may not be zero because then the training will stop */
+    
+    
+    
 		slope = train_slopes[i];
 		prev_slope = prev_train_slopes[i];
-
+    
+     
 		same_sign = prev_slope * slope;
 
+// https://github.com/libfann/fann/issues/85
+		next_step = prev_step;
+		if (same_sign > 0)
+			next_step = fann_min(prev_step * increase_factor, delta_max);
+		else if (same_sign < 0) {
+			next_step = fann_max(prev_step * decrease_factor, delta_min);
+			slope = 0;
+		}
+
+		if (slope < 0) {
+			weights[i] -= next_step;
+			if (weights[i] < -1500) weights[i] = -1500;
+		}
+		else if (slope > 0) {
+			weights[i] += next_step;
+			if (weights[i] > 1500) weights[i] = 1500;
+		}
+
+    /*
 		if(same_sign >= 0.0)
 			next_step = fann_min(prev_step * increase_factor, delta_max);
 		else
@@ -741,7 +774,9 @@ void fann_update_weights_irpropm(struct fann *ann, unsigned int first_weight, un
 			next_step = fann_max(prev_step * decrease_factor, delta_min);
 			slope = 0;
 		}
-
+   
+     
+    
 		if(slope < 0)
 		{
 			weights[i] -= next_step;
@@ -754,7 +789,8 @@ void fann_update_weights_irpropm(struct fann *ann, unsigned int first_weight, un
 			if(weights[i] > 1500)
 				weights[i] = 1500;
 		}
-
+	*/
+     
 		/*if(i == 2){
 		 * printf("weight=%f, slope=%f, next_step=%f, prev_step=%f\n", weights[i], slope, next_step, prev_step);
 		 * } */
@@ -763,6 +799,7 @@ void fann_update_weights_irpropm(struct fann *ann, unsigned int first_weight, un
 		prev_steps[i] = next_step;
 		prev_train_slopes[i] = slope;
 		train_slopes[i] = 0.0;
+
 	}
 }
 
