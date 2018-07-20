@@ -1,4 +1,4 @@
-# NewFann
+# NewFann  - Fann for Delphi
 
 Try examples and use only these DLLs (fannfloat32.dll and fannfloat64.dll)
 
