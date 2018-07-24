@@ -3,8 +3,8 @@ unit FannProjekt;
 interface
 
 uses
-  System.SysUtils, System.Classes, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, System.Math,
-  fann.DelphiApi, fann.DelphiTrainApi, Vcl.ComCtrls;
+  System.SysUtils, System.Types, System.Classes, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, System.Math, Vcl.ComCtrls, Vcl.Graphics,
+  fann.DelphiApi, fann.DelphiTrainApi, Vcl.ExtCtrls, Vcl.Samples.Spin;
 
 type
   TForm1 = class(TForm)
@@ -22,6 +22,10 @@ type
     btnBreak: TButton;
     btnTest: TButton;
     lvNeuron: TListView;
+    lvCon: TListView;
+    img1: TImage;
+    edtLine: TSpinEdit;
+    lblLine: TLabel;
     procedure btnTrainClick(Sender: TObject);
     procedure btnExecClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
@@ -33,10 +37,10 @@ type
   private
     FannStream: TMemoryStream;
     procedure TrainEvent(epochs: Integer; MSE: Single);
-    procedure TrainBreakEvent(epochs: Integer; MSE: Single; var IsTrainBreak: Boolean);
     procedure TrainCasEvent(epochs, total_epochs: Integer; MSE: Single);
     procedure FillNeuronsToList;
     procedure ClearMemo;
+    procedure DrawFann;
   public
   end;
 
@@ -102,6 +106,7 @@ begin
     FannStream.Clear;
     Fann.SaveToStream(FannStream);
     FillNeuronsToList;
+    DrawFann;
   finally
     Fann.Free;
   end;
@@ -155,7 +160,7 @@ begin
     try
       Train.epochs_between_reports := 1;
       Train.FannEvent              := TrainEvent;
-//       Train.FannBreakEvent := TrainBreakEvent;
+      // Train.FannBreakEvent := TrainBreakEvent;
       Train.desired_error := string(edtCError.Text).ToSingle;
       Train.TrainFromFannFile(FNParityTrain);
     finally
@@ -237,6 +242,8 @@ begin
     end;
     FannStream.Clear;
     Fann.SaveToStream(FannStream);
+    FillNeuronsToList;
+    DrawFann;
   finally
     Fann.Free;
   end;
@@ -248,18 +255,105 @@ begin
   mmoEvent.Clear;
 end;
 
+procedure TForm1.DrawFann;
+var
+  Fann: TFannclass;
+  N, N1, N2: TNeuron;
+  Con: TConnection;
+  GP: TFannGraphPositions;
+  R: TRect;
+  P, Pmov, P1, P2: TPointF;
+  i, ii: Integer;
+  H, W: Integer;
+
+  function Gray(Intensity: Byte): TColor;
+  begin
+    Result := TColor(Intensity) shl 16 + TColor(Intensity) shl 8 + TColor(Intensity);
+  end;
+
+  procedure Clear;
+  var
+    r: trect;
+  begin
+    r                       := TRect.Create(Point(0, 0), img1.Width, img1.Height);
+    img1.canvas.brush.color := clWhite;
+    img1.canvas.fillrect(R);
+  end;
+
+begin
+  Clear;
+  FannStream.Position := 0;
+  Fann                := TFannclass.Create(FannStream);
+  try
+    GP := TFannGraphPositions.Create(fann, img1.Width - 2, img1.Height - 40);
+    try
+      H := img1.Canvas.TextHeight('0');
+      W := img1.Canvas.TextWidth('0');
+
+      Pmov                  := P.Create(0, 20);
+      img1.Canvas.Pen.Width := edtLine.Value;
+      for i                 := 0 to fann.ConnectionCount - 1 do
+      begin
+        Con := fann.Connection[i];
+        N1  := Con.FromNeuron;
+        N2  := Con.ToNeuron;
+        P1  := GP.NeuronPosition(N1) + Pmov;
+        P2  := GP.NeuronPosition(N2) + Pmov;
+        if Abs(Con.Weight) > 40 then
+          img1.Canvas.Pen.Color := clBlack
+        else
+          img1.Canvas.Pen.Color := Gray(125 + 3 * Round(Con.Weight));
+        img1.Canvas.Polyline([P1.Round, P2.Round]);
+      end;
+
+      img1.Canvas.Pen.Width := 1;
+      Pmov                  := P.Create(-10, 10);
+      for i                 := 0 to fann.LayerCount - 1 do
+        for ii              := 0 to fann.NeuronandBiasCount[i] - 1 do
+        begin
+          N  := Fann.Neuron[i, ii];
+          P  := GP.NeuronPosition(N);
+          P2 := P + Pmov;
+          R  := TRect.Create(P2.Round, 20, 20);
+
+          img1.Canvas.Brush.Style := bsSolid;
+          if N.IsBias then
+            img1.Canvas.Rectangle(R)
+          else
+            img1.Canvas.Ellipse(R);
+
+          img1.Canvas.TextOut(P.Round.X - W div 2, P.Round.Y + H, N.NeuronIndx.ToString);
+          img1.Canvas.Brush.Style := bsClear;
+
+          if N.IsBias then
+            img1.Canvas.Rectangle(R)
+          else
+            img1.Canvas.Ellipse(R);
+        end;
+
+    finally
+      GP.Free;
+    end;
+  finally
+    Fann.Free;
+  end;
+
+end;
+
 procedure TForm1.FillNeuronsToList;
 var
   Fann: TFannclass;
   iLayer, iNeuron, f: Integer;
   Neuron: TNeuron;
+  Con: TConnection;
+  i: Integer;
 begin
   lvNeuron.Clear;
   FannStream.Position := 0;
   Fann                := TFannclass.Create(FannStream);
   try
     for iLayer    := 0 to Fann.LayerCount - 1 do
-      for iNeuron := 0 to Fann.NeuronCount[iLayer] - 1 do
+      for iNeuron := 0 to Fann.NeuronandBiasCount[iLayer] - 1 do
       begin
         Neuron := Fann.Neuron[iLayer, iNeuron];
         with lvNeuron.Items.Add do
@@ -276,6 +370,18 @@ begin
           SubItems.Add(Neuron.IsBias.ToString);
         end;
       end;
+
+    for i := 0 to fann.ConnectionCount - 1 do
+    begin
+      Con := Fann.Connection[i];
+      with lvCon.Items.Add do
+      begin
+        Caption := 'Connection';
+        SubItems.Add(Format('[%d , %d]', [Con.FromNeuron.LayerIndx, Con.FromNeuron.NeuronIndx]));
+        SubItems.Add(Format('[%d , %d]', [Con.ToNeuron.LayerIndx, Con.ToNeuron.NeuronIndx]));
+        SubItems.Add(Format('%.3f', [con.Weight]));
+      end;
+    end;
   finally
     Fann.Free;
   end;
@@ -291,10 +397,6 @@ end;
 procedure TForm1.FormDestroy(Sender: TObject);
 begin
   FannStream.Free;
-end;
-
-procedure TForm1.TrainBreakEvent(epochs: Integer; MSE: Single; var IsTrainBreak: Boolean);
-begin
 end;
 
 procedure TForm1.TrainCasEvent(epochs, total_epochs: Integer; MSE: Single);

@@ -1,9 +1,9 @@
 object Form1: TForm1
-  Left = 0
-  Top = 0
+  Left = 274
+  Top = 309
   Caption = 'Form1'
   ClientHeight = 561
-  ClientWidth = 1062
+  ClientWidth = 1443
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -11,13 +11,24 @@ object Form1: TForm1
   Font.Name = 'Tahoma'
   Font.Style = []
   OldCreateOrder = False
+  Position = poDesigned
   OnCreate = FormCreate
   OnDestroy = FormDestroy
-  DesignSize = (
-    1062
-    561)
   PixelsPerInch = 96
   TextHeight = 13
+  object img1: TImage
+    Left = 1128
+    Top = 40
+    Width = 307
+    Height = 497
+  end
+  object lblLine: TLabel
+    Left = 15
+    Top = 384
+    Width = 47
+    Height = 13
+    Caption = 'LineWidth'
+  end
   object mmo1: TMemo
     Left = 208
     Top = 32
@@ -131,9 +142,8 @@ object Form1: TForm1
   object lvNeuron: TListView
     Left = 680
     Top = 32
-    Width = 337
-    Height = 473
-    Anchors = [akLeft, akTop, akRight, akBottom]
+    Width = 420
+    Height = 289
     Columns = <
       item
         Caption = 'Name'
@@ -143,19 +153,61 @@ object Form1: TForm1
       end
       item
         Caption = 'Neuron'
+        Width = 40
       end
       item
         AutoSize = True
         Caption = 'Function'
-        MinWidth = 100
+        MinWidth = 125
       end
       item
         Caption = 'steepness'
+        MinWidth = 60
+        Width = 60
       end
       item
         Caption = 'Bias'
       end>
     TabOrder = 5
     ViewStyle = vsReport
+  end
+  object lvCon: TListView
+    Left = 680
+    Top = 344
+    Width = 420
+    Height = 193
+    Columns = <
+      item
+        Caption = 'Name'
+        MinWidth = 50
+      end
+      item
+        Caption = 'Neuron 1'
+        MinWidth = 60
+        Width = 60
+      end
+      item
+        Caption = 'Neuron 2'
+        MinWidth = 60
+        Width = 60
+      end
+      item
+        Alignment = taRightJustify
+        Caption = 'Weight'
+        MinWidth = 60
+        Width = 60
+      end>
+    TabOrder = 6
+    ViewStyle = vsReport
+  end
+  object edtLine: TSpinEdit
+    Left = 15
+    Top = 407
+    Width = 75
+    Height = 22
+    MaxValue = 0
+    MinValue = 0
+    TabOrder = 7
+    Value = 2
   end
 end
