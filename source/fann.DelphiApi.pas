@@ -7,7 +7,7 @@ unit fann.DelphiApi;
 interface
 
 uses
-  System.SysUtils, System.Classes, Fann.Api, Vcl.Dialogs;
+  System.SysUtils, System.Types, System.Classes, System.Math, Vcl.Dialogs, Fann.Api;
 
 type
 
@@ -233,6 +233,22 @@ type
     property candidate_limit: Single read Getcandidate_limit write Setcandidate_limit;
     property weight_multiplier: Single read Getweight_multiplier write Setweight_multiplier;
     property activation_functions_count: Integer read Getactivation_functions_count;
+  end;
+
+  TFannGraphPositions = class
+  strict private
+    Fann: TFannclass;
+    FLayerCount: Integer;
+    FPixelWidth: Integer;
+    FPixelHeight: Integer;
+    function PosY(N: TNeuron): Single;
+    function PosX(N: TNeuron): Single;
+    procedure MaxNeutronCount(var NCount, LayerIndx: Integer);
+    function NeutronXDistance: Single;
+    function NeutronYDistance: Single;
+  public
+    constructor Create(ann: TFannclass; PixelWidth, PixelHeight: Integer);
+    function NeuronPosition(N: TNeuron): TPointF;
   end;
 
 implementation
@@ -621,7 +637,6 @@ begin
     end;
 end;
 
-
 function TFannclass.Run(Inputs: TArray<Single>): TArray<Single>;
 var
   numin: Integer;
@@ -984,7 +999,7 @@ var
 begin
   if (LayerIndx < GetlayerCount) and (NeuronIndx < GetNeuronandBiasCount(LayerIndx)) then
   begin
-    IsBias := NeuronIndx = GetNeuronCount(LayerIndx);
+    IsBias := (NeuronIndx = GetNeuronandBiasCount(LayerIndx) - 1) and not(LayerIndx = GetlayerCount - 1);
     Result := TNeuron.Create(Fann, LayerIndx, NeuronIndx, IsBias);
   end
   else
@@ -992,17 +1007,23 @@ begin
 end;
 
 function TFannclass.GetNeuronandBiasCount(LayerIndx: Integer): Integer;
+var
+  LC: Integer;
 begin
-  if (LayerIndx < GetlayerCount) then
-    Result := GetNeuronsAndBiasPerLayer[LayerIndx] + 1
+  LC := GetlayerCount;
+  if (LayerIndx < LC) then
+    Result := GetNeuronsAndBiasPerLayer[LayerIndx]
   else
     Result := -1;
 end;
 
 function TFannclass.GetNeuronCount(LayerIndx: Integer): Integer;
+var
+  LC: Integer;
 begin
-  if (LayerIndx < GetlayerCount) then
-    Result := GetNeuronsPerLayer[LayerIndx] + 1
+  LC := GetlayerCount;
+  if (LayerIndx < LC) then
+    Result := GetNeuronsPerLayer[LayerIndx]
   else
     Result := -1;
 end;
@@ -1063,6 +1084,68 @@ begin
   FFromNeuron     := FromNeuron;
   FToNeuron       := ToNeuron;
   FWeight         := Weight;
+end;
+
+{ TFannGraphPositions }
+
+constructor TFannGraphPositions.Create(ann: TFannclass; PixelWidth, PixelHeight: Integer);
+begin
+  inherited Create;
+  Fann         := ann;
+  FPixelWidth  := PixelWidth;
+  FPixelHeight := PixelHeight;
+  FLayerCount  := Fann.LayerCount;
+end;
+
+procedure TFannGraphPositions.MaxNeutronCount(var NCount, LayerIndx: Integer);
+var
+  i: Integer;
+begin
+  NCount    := -1;
+  LayerIndx := -1;
+  for i     := 0 to FLayerCount - 1 do
+    if fann.NeuronandBiasCount[i] > NCount then
+    begin
+      NCount    := fann.NeuronandBiasCount[i];
+      LayerIndx := i;
+    end;
+end;
+
+function TFannGraphPositions.NeuronPosition(N: TNeuron): TPointF;
+begin
+  Result := TPointF.Create(PosX(N), PosY(N));
+end;
+
+function TFannGraphPositions.NeutronXDistance: Single;
+var
+  NCount, LayerIndx: Integer;
+begin
+  MaxNeutronCount(NCount, LayerIndx);
+  Result := FPixelWidth / NCount;
+end;
+
+function TFannGraphPositions.NeutronYDistance: Single;
+begin
+  Result := FPixelHeight / (FLayerCount - 1)
+end;
+
+function TFannGraphPositions.PosX(N: TNeuron): Single;
+var
+  C: Integer;
+  P: Single;
+begin
+  C := fann.NeuronandBiasCount[N.LayerIndx];
+  if Odd(C) then
+    P := N.NeuronIndx - (C - 1) / 2
+  else
+    P := N.NeuronIndx - C / 2 + 0.5;
+
+  Result := FPixelWidth / 2 + P * NeutronXDistance;
+end;
+
+function TFannGraphPositions.PosY(N: TNeuron): Single;
+begin
+  Result := NeutronYDistance * N.LayerIndx;
 end;
 
 end.
