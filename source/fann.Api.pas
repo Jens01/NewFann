@@ -85,13 +85,6 @@ const
 {$ELSE}
   FANN_CONF_VERSION = FANN_FLO_VERSION;
 {$ENDIF}
-procedure fann_scale_data_to_range(data: ppfann_type; num_data: Cardinal; num_elem: Cardinal;
-  old_min, old_max, new_min, new_max: fann_type); stdcall; external FANN_DLL_FILE name
-{$IF Defined(DOUBLEFANN)}
-  '_fann_scale_data_to_range@44';
-{$ELSE}
-  '_fann_scale_data_to_range@28';
-{$ENDIF}
 
 Type
 
@@ -514,6 +507,19 @@ procedure fann_destroy_train(train_data: pfann_train_data); stdcall; external FA
   name '_fann_destroy_train@4'
 {$ENDIF} {$IFDEF WIN64}
   name 'fann_destroy_train'
+{$ENDIF}
+  ;
+
+procedure fann_scale_data_to_range(data: ppfann_type; num_data: Cardinal; num_elem: Cardinal;
+  old_min, old_max, new_min, new_max: fann_type); stdcall; external FANN_DLL_FILE
+{$IFDEF WIN32}
+{$IF Defined(DOUBLEFANN)}
+  name '_fann_scale_data_to_range@44'
+{$ELSE}
+  name '_fann_scale_data_to_range@28'
+{$ENDIF}
+{$ENDIF} {$IFDEF WIN64}
+  name 'fann_scale_data_to_range'
 {$ENDIF}
   ;
 

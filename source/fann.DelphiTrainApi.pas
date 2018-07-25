@@ -35,6 +35,10 @@ type
     procedure SetNum_OutputNeurons(const Value: Integer);
     function GetInputSet(indx: Integer): TArray<Single>;
     function GetOutputSet(indx: Integer): TArray<Single>;
+    function MinData(Data: TList<Single>; num_elem: Integer): Single;
+    function MaxData(Data: TList<Single>; num_elem: Integer): Single;
+    procedure ScaleToRange(Data: TList<Single>; num_elem: Integer; old_min, old_max, new_min, new_max: Single);
+    procedure ScaleData(Data: TList<Single>; num_elem: Integer; new_min, new_max: Single);
   public
     constructor Create(Num_InputNeurons, Num_OutputNeurons: Integer); overload;
     constructor Create; overload;
@@ -44,6 +48,9 @@ type
     procedure LoadFromFannFile(Filename: string);
     procedure AddInput(Input: TArray<Single>);
     procedure AddOutput(Output: TArray<Single>);
+    procedure ScaleTrainData(Amin, Amax: Single);
+    procedure ScaleInputs(Amin, Amax: Single);
+    procedure ScaleOutputs(Amin, Amax: Single);
     property NumData: Integer read GetNumData;
     property NumInput: Integer read FNum_InputNeurons write SetNum_InputNeurons;
     property NumOutput: Integer read FNum_OutputNeurons write SetNum_OutputNeurons;
@@ -126,8 +133,6 @@ type
   end;
 
 implementation
-
-uses Vcl.Dialogs;
 
 function StringToArray(s: TArray<string>): TArray<Single>;
 var
@@ -279,6 +284,81 @@ end;
 function TTraindataclass.NumDataOutput: Integer;
 begin
   Result := FOutputs.Count div FNum_OutputNeurons;
+end;
+
+procedure TTraindataclass.ScaleData(Data: TList<Single>; num_elem: Integer; new_min, new_max: Single);
+var
+  old_min, old_max: Single;
+begin
+  old_min := MinData(Data, num_elem);
+  old_max := MaxData(Data, num_elem);
+  ScaleToRange(FInputs, FNum_InputNeurons, old_min, old_max, new_min, new_max);
+end;
+
+function TTraindataclass.MaxData(Data: TList<Single>; num_elem: Integer): Single;
+var
+  idat, ielem, i: Integer;
+begin
+  Result := Infinity;
+
+  for idat    := 0 to Data.Count - 1 do
+    for ielem := 0 to num_elem - 1 do
+    begin
+      i      := idat * num_elem + ielem;
+      Result := Max(Result, data[i]);
+    end;
+end;
+
+function TTraindataclass.MinData(Data: TList<Single>; num_elem: Integer): Single;
+var
+  idat, ielem, i: Integer;
+begin
+  Result := NegInfinity;
+
+  for idat    := 0 to Data.Count - 1 do
+    for ielem := 0 to num_elem - 1 do
+    begin
+      i      := idat * num_elem + ielem;
+      Result := Min(Result, data[i]);
+    end;
+end;
+
+procedure TTraindataclass.ScaleToRange(Data: TList<Single>; num_elem: Integer; old_min, old_max, new_min, new_max: Single);
+// fann_scale_data_to_range
+var
+  idat, ielem, i: Integer;
+  temp, factor: Single;
+begin
+  factor := (new_max - new_min) / (old_max - old_min);
+
+  for idat    := 0 to Data.Count - 1 do
+    for ielem := 0 to num_elem - 1 do
+    begin
+      i    := idat * num_elem + ielem;
+      temp := (data[i] - old_min) * factor + new_min;
+      if (temp < new_min) then
+        data[i] := new_min
+      else if (temp > new_max) then
+        data[i] := new_max
+      else
+        data[i] := temp;
+    end;
+end;
+
+procedure TTraindataclass.ScaleTrainData(Amin, Amax: Single);
+begin
+  ScaleInputs(Amin, Amax);
+  ScaleOutputs(Amin, Amax);
+end;
+
+procedure TTraindataclass.ScaleInputs(Amin, Amax: Single);
+begin
+  ScaleData(FInputs, FNum_InputNeurons, Amin, Amax);
+end;
+
+procedure TTraindataclass.ScaleOutputs(Amin, Amax: Single);
+begin
+  ScaleData(FOutputs, FNum_OutputNeurons, Amin, Amax);
 end;
 
 procedure TTraindataclass.SetNum_InputNeurons(const Value: Integer);
@@ -531,6 +611,7 @@ begin
   begin
     SetWewights(traindata);
     train_cascade_on_data(traindata);
+    // fann_cascadetrain_on_data(fann.ann, traindata.TrainData, Fmax_neurons, Fepochs_between_reports, Fdesired_error);
   end;
 end;
 
@@ -591,7 +672,7 @@ begin
     end;
 
     Inc(i);
-  until (i >= Fepochs_max) or IsBreak;
+  until (i >= Fmax_neurons) or IsBreak;
 
   // Train outputs one last time but without any desired error
   total_epochs := total_epochs + fann_train_outputs(Fann.ann, traindata.TrainData, 0.0);

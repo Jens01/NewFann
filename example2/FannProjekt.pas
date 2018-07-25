@@ -4,9 +4,11 @@ interface
 
 uses
   System.SysUtils, System.Types, System.Classes, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, System.Math, Vcl.ComCtrls, Vcl.Graphics,
-  fann.DelphiApi, fann.DelphiTrainApi, Vcl.ExtCtrls, Vcl.Samples.Spin;
+  fann.DelphiApi, fann.DelphiTrainApi, Vcl.ExtCtrls, Vcl.Samples.Spin, fann.Graph;
 
 type
+
+
   TForm1 = class(TForm)
     mmo1: TMemo;
     mmoEvent: TMemo;
@@ -83,8 +85,8 @@ begin
       CTrain.train_error_function   := FANN_ERRORFUNC_LINEAR;
       CTrain.bit_fail_limit         := 0.5;
       CTrain.train_stop_function    := FANN_STOPFUNC_MSE;
-      AcFunctions                   := [FANN_SIGMOID_STEPWISE];
-      Steepness                     := [0.5, 1];
+      AcFunctions                   := [FANN_SIGMOID_STEPWISE, FANN_SIGMOID_SYMMETRIC_STEPWISE];
+      Steepness                     := [0.25, 0.5, 0.75, 1];
       CTrain.activation_functions   := AcFunctions;
       CTrain.activation_steepnesses := Steepness;
 
@@ -159,6 +161,7 @@ begin
     Train := TTrainclass.Create(Fann);
     try
       Train.epochs_between_reports := 1;
+      Train.epochs_max             := 50000;
       Train.FannEvent              := TrainEvent;
       // Train.FannBreakEvent := TrainBreakEvent;
       Train.desired_error := string(edtCError.Text).ToSingle;
@@ -168,6 +171,8 @@ begin
     end;
     FannStream.Clear;
     Fann.SaveToStream(FannStream);
+    FillNeuronsToList;
+    DrawFann;
   finally
     Fann.Free;
   end;
@@ -218,6 +223,8 @@ begin
     end;
     FannStream.Clear;
     Fann.SaveToStream(FannStream);
+    FillNeuronsToList;
+    DrawFann;
   finally
     Fann.Free;
   end;
@@ -258,86 +265,21 @@ end;
 procedure TForm1.DrawFann;
 var
   Fann: TFannclass;
-  N, N1, N2: TNeuron;
-  Con: TConnection;
-  GP: TFannGraphPositions;
-  R: TRect;
-  P, Pmov, P1, P2: TPointF;
-  i, ii: Integer;
-  H, W: Integer;
-
-  function Gray(Intensity: Byte): TColor;
-  begin
-    Result := TColor(Intensity) shl 16 + TColor(Intensity) shl 8 + TColor(Intensity);
-  end;
-
-  procedure Clear;
-  var
-    r: trect;
-  begin
-    r                       := TRect.Create(Point(0, 0), img1.Width, img1.Height);
-    img1.canvas.brush.color := clWhite;
-    img1.canvas.fillrect(R);
-  end;
-
+  Graph: TDrawNeuronGraph;
 begin
-  Clear;
   FannStream.Position := 0;
   Fann                := TFannclass.Create(FannStream);
   try
-    GP := TFannGraphPositions.Create(fann, img1.Width - 2, img1.Height - 40);
+    Graph := TDrawNeuronGraph.Create(img1.Canvas, img1.Width, img1.Height);
     try
-      H := img1.Canvas.TextHeight('0');
-      W := img1.Canvas.TextWidth('0');
-
-      Pmov                  := P.Create(0, 20);
-      img1.Canvas.Pen.Width := edtLine.Value;
-      for i                 := 0 to fann.ConnectionCount - 1 do
-      begin
-        Con := fann.Connection[i];
-        N1  := Con.FromNeuron;
-        N2  := Con.ToNeuron;
-        P1  := GP.NeuronPosition(N1) + Pmov;
-        P2  := GP.NeuronPosition(N2) + Pmov;
-        if Abs(Con.Weight) > 40 then
-          img1.Canvas.Pen.Color := clBlack
-        else
-          img1.Canvas.Pen.Color := Gray(125 + 3 * Round(Con.Weight));
-        img1.Canvas.Polyline([P1.Round, P2.Round]);
-      end;
-
-      img1.Canvas.Pen.Width := 1;
-      Pmov                  := P.Create(-10, 10);
-      for i                 := 0 to fann.LayerCount - 1 do
-        for ii              := 0 to fann.NeuronandBiasCount[i] - 1 do
-        begin
-          N  := Fann.Neuron[i, ii];
-          P  := GP.NeuronPosition(N);
-          P2 := P + Pmov;
-          R  := TRect.Create(P2.Round, 20, 20);
-
-          img1.Canvas.Brush.Style := bsSolid;
-          if N.IsBias then
-            img1.Canvas.Rectangle(R)
-          else
-            img1.Canvas.Ellipse(R);
-
-          img1.Canvas.TextOut(P.Round.X - W div 2, P.Round.Y + H, N.NeuronIndx.ToString);
-          img1.Canvas.Brush.Style := bsClear;
-
-          if N.IsBias then
-            img1.Canvas.Rectangle(R)
-          else
-            img1.Canvas.Ellipse(R);
-        end;
-
+      Graph.BorderVert := 80;
+      Graph.Draw(Fann, edtLine.Value);
     finally
-      GP.Free;
+      Graph.Free;
     end;
   finally
     Fann.Free;
   end;
-
 end;
 
 procedure TForm1.FillNeuronsToList;
@@ -408,5 +350,6 @@ procedure TForm1.TrainEvent(epochs: Integer; MSE: Single);
 begin
   mmoEvent.Lines.Add(Format('No.:%5d MSE : %.6f', [epochs, MSE]));
 end;
+
 
 end.

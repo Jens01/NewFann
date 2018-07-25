@@ -10,7 +10,8 @@ uses
   FannProjekt in 'FannProjekt.pas' {Form1},
   fann.DelphiApi in '..\source\fann.DelphiApi.pas',
   fann.DelphiTrainApi in '..\source\fann.DelphiTrainApi.pas',
-  fann.Api in '..\source\fann.Api.pas';
+  fann.Api in '..\source\fann.Api.pas',
+  fann.Graph in '..\source\fann.Graph.pas';
 
 {$R *.res}
 

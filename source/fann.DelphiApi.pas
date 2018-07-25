@@ -7,7 +7,7 @@ unit fann.DelphiApi;
 interface
 
 uses
-  System.SysUtils, System.Types, System.Classes, System.Math, Vcl.Dialogs, Fann.Api;
+  System.SysUtils, System.Types, System.Classes, Fann.Api;
 
 type
 
@@ -22,6 +22,10 @@ type
     procedure Setactivation_steepness(const Value: Single);
   public
     constructor Create(ann: pfann; Num_Layer, Num_Neuron: Integer; IsBias: Boolean = False);
+    // TPoint :
+    // X -> LayerIndex
+    // Y -> NeutronIndex
+    function ToPoint: TPoint;
     property LayerIndx: Integer read FNum_Layer;
     property NeuronIndx: Integer read FNum_Neuron;
     property activation_function: Integer read Getactivation_function write Setactivation_function;
@@ -170,6 +174,7 @@ type
     procedure Setsarprop_weight_decay_shift(const Value: Single);
     function Getsarprop_step_error_threshold_factor: Single;
     procedure Setsarprop_step_error_threshold_factor(const Value: Single);
+    function GetNeuronMaxCoutInLayers: Integer;
   public
     constructor Create(NeuronsPerLayer: TArray<Integer>; NetWorkType: Integer = FANN_NETTYPE_LAYER;
       ConnectionRate: Single = 1); overload;
@@ -199,6 +204,7 @@ type
     property NeuronandBiasCount[LayerIndx: Integer]: Integer read GetNeuronandBiasCount;
     property Neuron[LayerIndx, NeuronIndx: Integer]: TNeuron read GetNeuron;
     property NeuronsPerLayer: TArray<Integer> read GetNeuronsPerLayer;
+    property NeuronMaxCountInLayers: Integer read GetNeuronMaxCoutInLayers;
     property BiasPerLayer: TArray<Integer> read GetBiasPerLayer;
     property NeuronsAndBiasPerLayer: TArray<Integer> read GetNeuronsAndBiasPerLayer;
     property ConnectionCount: Integer read GetConnectionCount;
@@ -238,16 +244,19 @@ type
   TFannGraphPositions = class
   strict private
     Fann: TFannclass;
-    FLayerCount: Integer;
     FPixelWidth: Integer;
     FPixelHeight: Integer;
+    FLayerCount: Integer;
+    FNeuronCount: Integer;
+    FIsDetaisGraph: Boolean;
+    FFromNeuron, FToNeuron: TPoint;
     function PosY(N: TNeuron): Single;
     function PosX(N: TNeuron): Single;
-    procedure MaxNeutronCount(var NCount, LayerIndx: Integer);
     function NeutronXDistance: Single;
     function NeutronYDistance: Single;
   public
-    constructor Create(ann: TFannclass; PixelWidth, PixelHeight: Integer);
+    constructor Create(ann: TFannclass; PixelWidth, PixelHeight: Integer); overload;
+    constructor Create(ann: TFannclass; PixelWidth, PixelHeight: Integer; FromNeuron, ToNeuron: TPoint); overload;
     function NeuronPosition(N: TNeuron): TPointF;
   end;
 
@@ -1028,6 +1037,19 @@ begin
     Result := -1;
 end;
 
+function TFannclass.GetNeuronMaxCoutInLayers: Integer;
+var
+  i, c: Integer;
+begin
+  Result := -1;
+  for i  := 0 to GetLayerCount - 1 do
+  begin
+    c := GetNeuronandBiasCount(i);
+    if c > Result then
+      Result := c;
+  end;
+end;
+
 function TFannclass.GetNeuronsAndBiasPerLayer: TArray<Integer>;
 var
   N, B: TArray<Integer>;
@@ -1076,6 +1098,11 @@ begin
   fann_set_activation_steepness(Fann, Value, FNum_Layer, FNum_Neuron);
 end;
 
+function TNeuron.ToPoint: TPoint;
+begin
+  Result := TPoint.Create(FNum_Layer, FNum_Neuron);
+end;
+
 { TConnection }
 
 constructor TConnection.Create(Num_Connection: Integer; FromNeuron, ToNeuron: TNeuron; Weight: Single);
@@ -1091,24 +1118,30 @@ end;
 constructor TFannGraphPositions.Create(ann: TFannclass; PixelWidth, PixelHeight: Integer);
 begin
   inherited Create;
-  Fann         := ann;
-  FPixelWidth  := PixelWidth;
-  FPixelHeight := PixelHeight;
-  FLayerCount  := Fann.LayerCount;
+  Fann           := ann;
+  FIsDetaisGraph := False;
+  FPixelWidth    := PixelWidth;
+  FPixelHeight   := PixelHeight;
+  FLayerCount    := Fann.LayerCount;
+  FNeuronCount   := Fann.NeuronMaxCountInLayers;
+  FFromNeuron    := TPoint.Create(0, 0);
+  FToNeuron      := TPoint.Create(0, 0);
 end;
 
-procedure TFannGraphPositions.MaxNeutronCount(var NCount, LayerIndx: Integer);
-var
-  i: Integer;
+constructor TFannGraphPositions.Create(ann: TFannclass; PixelWidth, PixelHeight: Integer; FromNeuron, ToNeuron: TPoint);
 begin
-  NCount    := -1;
-  LayerIndx := -1;
-  for i     := 0 to FLayerCount - 1 do
-    if fann.NeuronandBiasCount[i] > NCount then
-    begin
-      NCount    := fann.NeuronandBiasCount[i];
-      LayerIndx := i;
-    end;
+  Create(ann, PixelWidth, PixelHeight);
+  FFromNeuron := FromNeuron;
+  FToNeuron   := ToNeuron;
+
+  if (FToNeuron.Y > FFromNeuron.Y) and (FToNeuron.X > FFromNeuron.X) then
+  begin
+    FLayerCount    := FToNeuron.X - FFromNeuron.X;
+    FNeuronCount   := FToNeuron.Y - FFromNeuron.Y;
+    FIsDetaisGraph := True;
+  end
+  else
+    raise Exception.Create('Error');
 end;
 
 function TFannGraphPositions.NeuronPosition(N: TNeuron): TPointF;
@@ -1117,11 +1150,8 @@ begin
 end;
 
 function TFannGraphPositions.NeutronXDistance: Single;
-var
-  NCount, LayerIndx: Integer;
 begin
-  MaxNeutronCount(NCount, LayerIndx);
-  Result := FPixelWidth / NCount;
+  Result := FPixelWidth / FNeuronCount;
 end;
 
 function TFannGraphPositions.NeutronYDistance: Single;
@@ -1140,7 +1170,7 @@ begin
   else
     P := N.NeuronIndx - C / 2 + 0.5;
 
-  Result := FPixelWidth / 2 + P * NeutronXDistance;
+  Result := FPixelWidth / 2 + (P - FFromNeuron.Y) * NeutronXDistance;
 end;
 
 function TFannGraphPositions.PosY(N: TNeuron): Single;
