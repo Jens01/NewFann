@@ -70,9 +70,9 @@ const
 {$ELSEIF Defined(WIN64)}
   FANNPLATFORM = '64';
 {$ELSE}
-raise Exception.Create('Error: Platform');
+{$MESSAGE Fatal 'Error: Platform not supported'}
 {$ENDIF}
-FANN_DLL_FILE = FANNFILENAME + FANNPLATFORM + '.dll';
+  FANN_DLL_FILE = FANNFILENAME + FANNPLATFORM + '.dll';
 
 const
   RAND_MAX = $7FFF;
@@ -1459,12 +1459,17 @@ procedure fann_set_weight_array(ann: pfann; connections: pfann_connection; num_c
   ;
 
 procedure fann_set_weight(ann: pfann; from_neuron: Cardinal; to_neuron: Cardinal; weight: fann_type); stdcall;
-  external FANN_DLL_FILE name
+  external FANN_DLL_FILE
+{$IFDEF WIN32}
 {$IFDEF DOUBLEFANN}
-  '_fann_set_weight@20';
+  name '_fann_set_weight@20'
 {$ELSE}
-  '_fann_set_weight@16';
+  name '_fann_set_weight@16'
 {$ENDIF}
+{$ENDIF} {$IFDEF WIN64}
+  name 'fann_set_weight'
+{$ENDIF}
+  ;
 procedure fann_set_user_data(ann: pfann; user_data: Pointer); stdcall; external FANN_DLL_FILE name '_fann_set_user_data@8';
 
 function fann_get_user_data(ann: pfann): Pointer; stdcall; external FANN_DLL_FILE name '_fann_get_user_data@4';

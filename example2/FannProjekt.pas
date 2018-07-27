@@ -3,11 +3,11 @@ unit FannProjekt;
 interface
 
 uses
-  System.SysUtils, System.Types, System.Classes, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, System.Math, Vcl.ComCtrls, Vcl.Graphics,
+  System.SysUtils, System.Types, System.Classes, Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, System.Math, Vcl.ComCtrls,
+  Vcl.Dialogs, System.Generics.Collections,
   fann.DelphiApi, fann.DelphiTrainApi, Vcl.ExtCtrls, Vcl.Samples.Spin, fann.Graph;
 
 type
-
 
   TForm1 = class(TForm)
     mmo1: TMemo;
@@ -28,6 +28,25 @@ type
     img1: TImage;
     edtLine: TSpinEdit;
     lblLine: TLabel;
+    chkWeights: TCheckBox;
+    btnDraw: TButton;
+    btnDrawpartial: TButton;
+    grpDraw: TGroupBox;
+    grpChangeCon: TGroupBox;
+    edtConIndex: TEdit;
+    lblCon1: TLabel;
+    edtNewWeight: TEdit;
+    lblNewWeight: TLabel;
+    btnNewWeight: TButton;
+    grpChangeNeuron: TGroupBox;
+    lblNeuronIndex: TLabel;
+    edtNeuronIndex: TEdit;
+    btnNewNeuron: TButton;
+    lblNewSteep: TLabel;
+    edtNewSteep: TEdit;
+    lblNewFunc: TLabel;
+    edtNewFunc: TEdit;
+    lblTextToGraph: TLabel;
     procedure btnTrainClick(Sender: TObject);
     procedure btnExecClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
@@ -36,13 +55,22 @@ type
     procedure btnCExecClick(Sender: TObject);
     procedure btnCTrainClick(Sender: TObject);
     procedure btnTestClick(Sender: TObject);
+    procedure img1MouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+    procedure btnDrawClick(Sender: TObject);
+    procedure btnDrawpartialClick(Sender: TObject);
+    procedure btnNewWeightClick(Sender: TObject);
+    procedure btnNewNeuronClick(Sender: TObject);
   private
+    Graph: TDrawNeuronGraph;
     FannStream: TMemoryStream;
     procedure TrainEvent(epochs: Integer; MSE: Single);
     procedure TrainCasEvent(epochs, total_epochs: Integer; MSE: Single);
     procedure FillNeuronsToList;
     procedure ClearMemo;
     procedure DrawFann;
+    procedure DrawFannpartial;
+    procedure SetConToEdit(C: TConnection);
+    procedure SetNeuronToEdit(N: TNeuron);
   public
   end;
 
@@ -77,7 +105,7 @@ begin
     CTrain := TCascadeclass.Create(Fann);
     try
       CTrain.epochs_between_reports := 50;
-      Fann.DefNeutronLayer(1, 0.75, FANN_SIGMOID_SYMMETRIC_STEPWISE);
+      Fann.DefNeuronLayer(1, 0.75, FANN_SIGMOID_SYMMETRIC_STEPWISE);
 
       CTrain.desired_error          := string(edtCError.Text).ToSingle;
       CTrain.FannCascadeEvent       := TrainCasEvent;
@@ -178,6 +206,16 @@ begin
   end;
 end;
 
+procedure TForm1.btnDrawClick(Sender: TObject);
+begin
+  DrawFann;
+end;
+
+procedure TForm1.btnDrawpartialClick(Sender: TObject);
+begin
+  DrawFannpartial;
+end;
+
 procedure TForm1.btnExecClick(Sender: TObject);
 var
   Fann: TFannclass;
@@ -197,6 +235,49 @@ begin
           mmo1.Lines.Add(Format('%f Xor %f = %f', [_input[0], _input[1], _output[0]]));
         end;
     end;
+  finally
+    Fann.Free;
+  end;
+end;
+
+procedure TForm1.btnNewNeuronClick(Sender: TObject);
+var
+  Fann: TFannclass;
+  Train: TTrainclass;
+  ss: TArray<string>;
+  Li, Ni: Integer;
+  N: TNeuron;
+begin
+  FannStream.Position := 0;
+  Fann                := TFannclass.Create(FannStream);
+  try
+    ss := string(edtNeuronIndex.Text).Split([',']);
+    Li := ss[0].ToInteger;
+    Ni := ss[1].ToInteger;
+    N  := Fann.Neuron[Li, Ni];
+    Fann.DefNeuron(N, string(edtNewSteep.Text).ToSingle, string(edtNewFunc.Text).ToInteger);
+    FannStream.Position := 0;
+    Fann.SaveToStream(FannStream);
+    ShowMessage('changes after DrawClick in graph activ');
+  finally
+    Fann.Free;
+  end;
+end;
+
+procedure TForm1.btnNewWeightClick(Sender: TObject);
+var
+  Fann: TFannclass;
+  Train: TTrainclass;
+  C: TConnection;
+begin
+  FannStream.Position := 0;
+  Fann                := TFannclass.Create(FannStream);
+  try
+    C := Fann.Connection[string(edtConIndex.Text).ToInteger];
+    Fann.DefConnection(C, string(edtNewWeight.Text).ToSingle);
+    FannStream.Position := 0;
+    Fann.SaveToStream(FannStream);
+    ShowMessage('changes after DrawClick in graph activ');
   finally
     Fann.Free;
   end;
@@ -265,20 +346,56 @@ end;
 procedure TForm1.DrawFann;
 var
   Fann: TFannclass;
-  Graph: TDrawNeuronGraph;
 begin
-  FannStream.Position := 0;
-  Fann                := TFannclass.Create(FannStream);
-  try
-    Graph := TDrawNeuronGraph.Create(img1.Canvas, img1.Width, img1.Height);
+  if FannStream.Size > 0 then
+  begin
+    FannStream.Position := 0;
+    Fann                := TFannclass.Create(FannStream);
     try
-      Graph.BorderVert := 80;
-      Graph.Draw(Fann, edtLine.Value);
+      Graph.IsDrawWeigths := chkWeights.Checked;
+      Graph.BorderVert    := 80;
+      Graph.SetNeurons(Fann.NeuronsAndBias);
+      Graph.SetConnections(Fann.Connections);
+      Graph.Draw(edtLine.Value);
     finally
-      Graph.Free;
+      Fann.Free;
     end;
-  finally
-    Fann.Free;
+  end;
+end;
+
+procedure TForm1.DrawFannpartial;
+var
+  Fann: TFannclass;
+  function Part: TArray<TNeuron>;
+  var
+    L: TList<TNeuron>;
+    iNeuron: TNeuron;
+  begin
+    L := TList<TNeuron>.Create;
+    try
+      for iNeuron in Fann.NeuronsAndBias do
+        if iNeuron.LayerIndx > 0 then
+          L.Add(iNeuron);
+      Result := L.ToArray;
+    finally
+      L.Free;
+    end;
+  end;
+
+begin
+  if FannStream.Size > 0 then
+  begin
+    FannStream.Position := 0;
+    Fann                := TFannclass.Create(FannStream);
+    try
+      Graph.IsDrawWeigths := chkWeights.Checked;
+      Graph.BorderVert    := 80;
+      Graph.SetNeurons(Part);
+      Graph.SetConnections(Fann.Connections);
+      Graph.Draw(edtLine.Value);
+    finally
+      Fann.Free;
+    end;
   end;
 end;
 
@@ -334,11 +451,73 @@ begin
   edtError.Text  := '0,001';
   edtCError.Text := '0,001';
   FannStream     := TMemoryStream.Create;
+  Graph          := TDrawNeuronGraph.Create(img1.Canvas, img1.Width, img1.Height);
 end;
 
 procedure TForm1.FormDestroy(Sender: TObject);
 begin
+  Graph.Free;
   FannStream.Free;
+end;
+
+procedure TForm1.img1MouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+var
+  N: TNeuron;
+  con: TConnection;
+  P: TPoint;
+  i: Integer;
+  s: string;
+begin
+  P := TPoint.Create(X, Y);
+  if Graph.NeuronOfPoint(P, N) then
+  begin
+    i := N.activation_function;
+    if i > -1 then
+      s := FANN_ACTIVATIONFUNC_NAMES[i]
+    else
+      s := '-';
+    showmessage(Format('Neuron: (%d, %d) - Func: %s  Steep: %.3f', [N.LayerIndx, N.NeuronIndx, s, N.activation_steepness]));
+    SetNeuronToEdit(N);
+  end
+  else if Graph.ConOfPoint(P, 15, con) then
+  begin
+    showmessage(Format('Connection: Weight = %.3f  -   (%d, %d) to (%d, %d)', [con.Weight, con.FromNeuron.LayerIndx,
+      con.FromNeuron.NeuronIndx, con.ToNeuron.LayerIndx, con.ToNeuron.NeuronIndx]));
+    SetConToEdit(con);
+  end;
+end;
+
+procedure TForm1.SetConToEdit(C: TConnection);
+var
+  Fann: TFannclass;
+  i: Integer;
+begin
+  FannStream.Position := 0;
+  Fann                := TFannclass.Create(FannStream);
+  try
+    i                 := Fann.IndexOfConnection(C);
+    edtConIndex.Text  := i.ToString;
+    edtNewWeight.Text := C.Weight.ToString;
+  finally
+    Fann.Free;
+  end;
+end;
+
+procedure TForm1.SetNeuronToEdit(N: TNeuron);
+var
+  Fann: TFannclass;
+  i: Integer;
+begin
+  FannStream.Position := 0;
+  Fann                := TFannclass.Create(FannStream);
+  try
+    i                   := Fann.IndxOfNeuron(N);
+    edtNeuronIndex.Text := N.LayerIndx.ToString + ',' + N.NeuronIndx.ToString;
+    edtNewSteep.Text    := N.activation_steepness.ToString;
+    edtNewFunc.Text     := N.activation_function.ToString;
+  finally
+    Fann.Free;
+  end;
 end;
 
 procedure TForm1.TrainCasEvent(epochs, total_epochs: Integer; MSE: Single);
@@ -350,6 +529,5 @@ procedure TForm1.TrainEvent(epochs: Integer; MSE: Single);
 begin
   mmoEvent.Lines.Add(Format('No.:%5d MSE : %.6f', [epochs, MSE]));
 end;
-
 
 end.
