@@ -2,6 +2,8 @@
 
 Try examples and use only these DLLs (fannfloat32.dll and fannfloat64.dll)
 
+Try example2 for testing graph
+
 important links :
 
 http://leenissen.dk/fann/wp/
