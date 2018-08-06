@@ -479,7 +479,7 @@ begin
     showmessage(Format('Neuron: (%d, %d) - Func: %s  Steep: %.3f', [N.LayerIndx, N.NeuronIndx, s, N.activation_steepness]));
     SetNeuronToEdit(N);
   end
-  else if Graph.ConOfPoint(P, 15, con) then
+  else if Graph.ConOfPoint(P, 5, con) then
   begin
     showmessage(Format('Connection: Weight = %.3f  -   (%d, %d) to (%d, %d)', [con.Weight, con.FromNeuron.LayerIndx,
       con.FromNeuron.NeuronIndx, con.ToNeuron.LayerIndx, con.ToNeuron.NeuronIndx]));
