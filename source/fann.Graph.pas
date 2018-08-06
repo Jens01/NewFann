@@ -6,7 +6,7 @@ unit fann.Graph;
 
 interface
 
-{$DEFINE GR32! }
+{.$DEFINE GR32! }
 
 uses
   System.Types, System.SysUtils, System.Math, Vcl.Graphics, System.Generics.Collections,
