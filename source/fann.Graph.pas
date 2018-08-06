@@ -6,10 +6,10 @@ unit fann.Graph;
 
 interface
 
-{.$DEFINE GR32! }
+{$DEFINE GR32! }
 
 uses
-  System.Types, System.SysUtils, Vcl.Graphics, System.Generics.Collections,
+  System.Types, System.SysUtils, System.Math, Vcl.Graphics, System.Generics.Collections,
 {$IFDEF GR32!}
   GR32, Grafik.LinesAndText,
 {$ENDIF}
@@ -49,10 +49,10 @@ type
     FIsDrawNeurons: Boolean;
     FIsDrawCons: Boolean;
     FNeurons: TNeuronList;
-    FCons: TList<TConnection>;
+    FCons: TConList;
     procedure ClearCanvas;
     procedure DrawLine(P1: TPointF; P2: TPointF; C: TColor; LW: Single);
-    function Gray(Intensity: Byte): TColor;
+    function Gray(Intensity: Byte; Alpha: Byte = $FF): TColor;
     procedure DrawWeights(GP: TFannGraphPositions);
     procedure DrawCon(GP: TFannGraphPositions; LineWidth: Single);
     procedure DrawNeurons(GP: TFannGraphPositions);
@@ -77,18 +77,113 @@ type
 
 implementation
 
-function IntersecCircleLine(LinePoint1, LinePoint2, Circle: TPointF; Radius: Single): Boolean; inline;
+function Collinear(P1, P2, P3: TPointF): Boolean; inline;
+const
+  eps = 0.001;
+begin
+  Result := IsZero(P1.X * (P2.Y - P3.Y) + P2.X * (P3.Y - P1.Y) + P3.X * (P1.Y - P2.Y), eps);
+end;
+
+function PointOnLine(const LinePoint1, LinePoint2, Point: TPointF): Boolean;
+const
+  eps = 0.0001;
+var
+  L, LL, W: Single;
+  A: TPointF;
+begin
+  Result := Collinear(LinePoint1, LinePoint2, Point);
+  if Result then
+  begin
+    A      := Point - LinePoint1;
+    W      := A.Normalize.DotProduct((LinePoint2 - LinePoint1).Normalize);
+    L      := A.Length;
+    LL     := (LinePoint2 - LinePoint1).Length;
+    Result := (CompareValue(L, 0, eps) > -1) and (CompareValue(L, LL, eps) < 1) and
+      not((W < 0) and (CompareValue(L, 0, eps) = 1));
+  end;
+end;
+
+function IntersecCircleLine(LinePoint1, LinePoint2, Circle: TPointF; Radius: Single; var P1, P2: TPointF): Integer;
+const
+  eps = 0.0001;
 var
   D, l, r: Single;
-  d1, d2: TPointF;
+  d1, d2, d3: TPointF;
+
+  function Point1: TPointF;
+  var
+    x, y, sgn: Single;
+  begin
+    if d3.Y < 0 then
+      sgn := -1
+    else
+      sgn  := 1;
+    x      := (D * d3.Y + sgn * d3.X * Sqrt(r)) / (l * l);
+    y      := (-D * d3.X + Abs(d3.Y) * Sqrt(r)) / (l * l);
+    Result := TPointF.Create(x, y);
+  end;
+  function Point2: TPointF;
+  var
+    x, y, sgn: Single;
+  begin
+    if d3.Y < 0 then
+      sgn := -1
+    else
+      sgn  := 1;
+    x      := (D * d3.Y - sgn * d3.X * Sqrt(r)) / (l * l);
+    y      := (-D * d3.X - Abs(d3.Y) * Sqrt(r)) / (l * l);
+    Result := TPointF.Create(x, y);
+  end;
+
 begin
-  d1     := LinePoint1 - Circle;
-  d2     := LinePoint2 - Circle;
-  l      := (d2 - d1).Length;
-  D      := d1.CrossProduct(d2);
-  r      := Radius * Radius * l - D * D;
-  Result := r >= 0;
+  /// Result :
+  /// 0 : no intersection
+  /// 1 : two intersections
+  /// 2 : one tangential intersection
+
+  d1 := LinePoint1 - Circle;
+  d2 := LinePoint2 - Circle;
+  d3 := d2 - d1;
+  l  := d3.Length;
+  D  := d1.CrossProduct(d2);
+
+  r := Radius * Radius * l * l - D * D;
+
+  if (r > eps) then
+  begin
+    P1     := Point1 + Circle;
+    P2     := Point2 + Circle;
+    Result := 1;
+  end
+  else if (r > -eps) then
+  begin
+    P1     := Point1 + Circle;
+    P2     := TPointF.Create(0, 0);
+    Result := 2;
+  end
+  else
+  begin
+    P1     := TPointF.Create(0, 0);
+    P2     := TPointF.Create(0, 0);
+    Result := 0;
+  end;
+
 end;
+
+// function IntersecCircleLine2(LinePoint1, LinePoint2, Circle: TPointF; Radius: Single): Boolean; inline;
+// var
+// D, l, r: Single;
+// d1, d2, V: TPointF;
+// begin
+// d1 := LinePoint1 - Circle;
+// d2 := LinePoint2 - Circle;
+// V := d2 - d1;
+// l := V.X * V.X + V.Y * V.Y;
+//
+// D      := d1.CrossProduct(d2);
+// r      := Radius * Radius * l - D * D;
+// Result := r >= 0;
+// end;
 
 { TDrawNeuronGraph }
 
@@ -100,8 +195,8 @@ begin
   FBitmap.SetSize(Width, Height);
   FBitmap.Clear(clWhite32);
 {$ENDIF}
-  FNeurons      := TNeuronList.Create;
-  FCons          := TList<TConnection>.Create;
+  FNeurons       := TNeuronList.Create;
+  FCons          := TConList.Create;
   FCanvas        := Canvas;
   FWidth         := Width;
   FHeight        := Height;
@@ -122,9 +217,9 @@ begin
   inherited;
 end;
 
-function TDrawNeuronGraph.Gray(Intensity: Byte): TColor;
+function TDrawNeuronGraph.Gray(Intensity: Byte; Alpha: Byte = $FF): TColor;
 begin
-  Result := TColor(Intensity) shl 16 + TColor(Intensity) shl 8 + TColor(Intensity);
+  Result := { TColor(255) shl 24 + } TColor(Intensity) shl 16 + TColor(Intensity) shl 8 + TColor(Intensity);
 end;
 
 function TDrawNeuronGraph.NeuronOfPoint(P: TPoint; var Neuron: TNeuron): Boolean;
@@ -222,7 +317,10 @@ var
   N1, N2: TNeuron;
   iCon: TConnection;
   C: TColor;
+  _Min, _Max, M: Single;
 begin
+  _Min := FCons.WeightMin;
+  _Max := FCons.WeightMax;
   Pmov := TPointF.Create(0, FBorderVert);
   for iCon in FCons do
   begin
@@ -232,10 +330,14 @@ begin
     begin
       P1 := GP.NeuronPosition(N1) + Pmov;
       P2 := GP.NeuronPosition(N2) + Pmov;
-      if Abs(iCon.Weight) > 40 then
-        C := clBlack
+
+      if iCon.Weight > 0 then
+        M := _Max
       else
-        C := Gray(125 + 3 * Round(iCon.Weight));
+        M := _Min;
+
+      C := Gray(20 + 255 - Round(Abs(iCon.Weight / M) * 236));
+
       DrawLine(P1, P2, C, LineWidth);
     end;
   end;
@@ -254,7 +356,7 @@ function TDrawNeuronGraph.ConOfPoint(P: TPoint; Radius: Single; var Con: TConnec
 var
   iCon: TConnection;
   N1, N2: TNeuron;
-  P1, P2: TPointF;
+  P1, P2, P3, P4: TPointF;
   GP: TFannGraphPositions;
 begin
   P  := P - TPoint.Create(0, FBorderVert);
@@ -268,7 +370,7 @@ begin
       begin
         P1 := GP.NeuronPosition(N1);
         P2 := GP.NeuronPosition(N2);
-        if IntersecCircleLine(P1, P2, P, Radius) then
+        if (IntersecCircleLine(P1, P2, P, Radius, P3, P4) > 0) and (PointOnLine(P1, P2, P3) or PointOnLine(P1, P2, P4)) then
         begin
           Con := iCon;
           Exit(True);

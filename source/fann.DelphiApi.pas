@@ -111,6 +111,16 @@ type
     property CleanedLayerIndex[LayerIndx: Integer]: Integer read GetCleanedLayerIndex;
   end;
 
+  TConList = class(TList<TConnection>)
+  strict private
+  public
+    function WeightMax: Single;
+    function WeightMin: Single;
+    function ConnectionsOfNeuron(NeuronPos: TPoint): TArray<TConnection>;
+    function ConnectionsInOfNeuron(NeuronPos: TPoint): TArray<TConnection>;
+    function ConnectionsOutOfNeuron(NeuronPos: TPoint): TArray<TConnection>;
+  end;
+
   TFannclass = class
   private
     Fann: pfann;
@@ -1421,6 +1431,77 @@ begin
       else
         Result := 0;
     end));
+end;
+
+{ TConList }
+
+function TConList.ConnectionsInOfNeuron(NeuronPos: TPoint): TArray<TConnection>;
+var
+  L: TList<TConnection>;
+  iCon: TConnection;
+begin
+  L := TList<TConnection>.Create;
+  try
+    for iCon in Self do
+      if (iCon.FromNeuron.ToPoint = NeuronPos) then
+        L.Add(iCon);
+    Result := L.ToArray;
+  finally
+    L.Free;
+  end;
+end;
+
+function TConList.ConnectionsOfNeuron(NeuronPos: TPoint): TArray<TConnection>;
+var
+  L: TList<TConnection>;
+  iCon: TConnection;
+begin
+  L := TList<TConnection>.Create;
+  try
+    for iCon in Self do
+      if (iCon.FromNeuron.ToPoint = NeuronPos) or (iCon.ToNeuron.ToPoint = NeuronPos) then
+        L.Add(iCon);
+    Result := L.ToArray;
+  finally
+    L.Free;
+  end;
+end;
+
+function TConList.ConnectionsOutOfNeuron(NeuronPos: TPoint): TArray<TConnection>;
+var
+  i: Integer;
+  L: TList<TConnection>;
+  iCon: TConnection;
+begin
+  L := TList<TConnection>.Create;
+  try
+    for iCon in Self do
+      if (iCon.ToNeuron.ToPoint = NeuronPos) then
+        L.Add(iCon);
+    Result := L.ToArray;
+  finally
+    L.Free;
+  end;
+end;
+
+function TConList.WeightMax: Single;
+var
+  iCon: TConnection;
+begin
+  Result := -INFINITE;
+  for iCon in Self do
+    if iCon.Weight > Result then
+      Result := iCon.Weight;
+end;
+
+function TConList.WeightMin: Single;
+var
+  iCon: TConnection;
+begin
+  Result := INFINITE;
+  for iCon in Self do
+    if iCon.Weight < Result then
+      Result := iCon.Weight;
 end;
 
 end.
