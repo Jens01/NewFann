@@ -93,53 +93,50 @@ end;
 
 procedure TForm1.btnCascadeClick(Sender: TObject);
 var
-  Fann: TFannclass;
+  ann: TFannclass;
   CTrain: TCascadeclass;
   Steepness: TArray<Single>;
   AcFunctions: TArray<Integer>;
   i: Integer;
 begin
   ClearMemo;
-  Fann := TFannclass.Create([8, 1], FANN_NETTYPE_SHORTCUT);
+  CTrain := TCascadeclass.Create(8, 1);
   try
-    CTrain := TCascadeclass.Create(Fann);
-    try
-      CTrain.epochs_between_reports := 50;
-      Fann.DefNeuronLayer(1, 0.75, FANN_SIGMOID_SYMMETRIC_STEPWISE);
+    ann := CTrain.ann;
+    ann.DefNeuronLayer(1, 0.75, FANN_SIGMOID_SYMMETRIC_STEPWISE);
 
-      CTrain.desired_error          := string(edtCError.Text).ToSingle;
-      CTrain.FannCascadeEvent       := TrainCasEvent;
-      CTrain.training_algorithm     := FANN_TRAIN_RPROP;
-      CTrain.train_error_function   := FANN_ERRORFUNC_LINEAR;
-      CTrain.bit_fail_limit         := 0.5;
-      CTrain.train_stop_function    := FANN_STOPFUNC_MSE;
-      AcFunctions                   := [FANN_SIGMOID_STEPWISE, FANN_SIGMOID_SYMMETRIC_STEPWISE];
-      Steepness                     := [0.25, 0.5, 0.75, 1];
-      CTrain.activation_functions   := AcFunctions;
-      CTrain.activation_steepnesses := Steepness;
+    CTrain.epochs_between_reports := 50;
+    CTrain.desired_error          := string(edtCError.Text).ToSingle;
+    CTrain.FannCascadeEvent       := TrainCasEvent;
+    CTrain.training_algorithm     := FANN_TRAIN_RPROP;
+    CTrain.train_error_function   := FANN_ERRORFUNC_LINEAR;
+    CTrain.bit_fail_limit         := 0.5;
+    CTrain.train_stop_function    := FANN_STOPFUNC_MSE;
+    AcFunctions                   := [FANN_SIGMOID_STEPWISE, FANN_SIGMOID_SYMMETRIC_STEPWISE];
+    Steepness                     := [0.25, 0.5, 0.75, 1];
+    CTrain.activation_functions   := AcFunctions;
+    CTrain.activation_steepnesses := Steepness;
 
-      if (CTrain.training_algorithm <> FANN_TRAIN_QUICKPROP) then
-      begin
-        CTrain.learning_rate    := 0.7;
-        CTrain.WeigthsMax       := 5;
-        CTrain.WeigthsMin       := -5;
-        CTrain.UseRandomWeigths := False;
-      end;
-      CTrain.TrainCascadeFromFannFile(FNParityTrain);
-    finally
-      CTrain.Free;
+    if (CTrain.training_algorithm <> FANN_TRAIN_QUICKPROP) then
+    begin
+      CTrain.learning_rate    := 0.7;
+      CTrain.WeigthsMax       := 5;
+      CTrain.WeigthsMin       := -5;
+      CTrain.UseRandomWeigths := False;
     end;
-
-    for i := 0 to Fann.LayerCount - 1 do
-      mmoEvent.Lines.Add(Format('LayerIndx %d : Neurons : %d (%d)', [i, Fann.NeuronCount[i], Fann.NeuronandBiasCount[i]]));
+    CTrain.TrainCascadeFromFannFile(FNParityTrain);
 
     FannStream.Clear;
-    Fann.SaveToStream(FannStream);
-    FillNeuronsToList;
-    DrawFann;
+    CTrain.SaveToStream(FannStream);
+
+    for i := 0 to ann.LayerCount - 1 do
+      mmoEvent.Lines.Add(Format('LayerIndx %d : Neurons : %d (%d)', [i, ann.NeuronCount[i], ann.NeuronandBiasCount[i]]));
   finally
-    Fann.Free;
+    CTrain.Free;
   end;
+
+  FillNeuronsToList;
+  DrawFann;
 end;
 
 procedure TForm1.btnCExecClick(Sender: TObject);
@@ -179,31 +176,27 @@ end;
 
 procedure TForm1.btnCTrainClick(Sender: TObject);
 var
-  Fann: TFannclass;
   Train: TTrainclass;
 begin
   ClearMemo;
   FannStream.Position := 0;
-  Fann                := TFannclass.Create(FannStream);
+  Train               := TTrainclass.Create(FannStream);
   try
-    Train := TTrainclass.Create(Fann);
-    try
-      Train.epochs_between_reports := 1;
-      Train.epochs_max             := 50000;
-      Train.FannEvent              := TrainEvent;
-      // Train.FannBreakEvent := TrainBreakEvent;
-      Train.desired_error := string(edtCError.Text).ToSingle;
-      Train.TrainFromFannFile(FNParityTrain);
-    finally
-      Train.Free;
-    end;
+    Train.epochs_between_reports := 1;
+    Train.epochs_max             := 50000;
+    Train.FannEvent              := TrainEvent;
+    // Train.FannBreakEvent := TrainBreakEvent;
+    Train.desired_error := string(edtCError.Text).ToSingle;
+    Train.TrainFromFannFile(FNParityTrain);
+
     FannStream.Clear;
-    Fann.SaveToStream(FannStream);
-    FillNeuronsToList;
-    DrawFann;
+    Train.SaveToStream(FannStream);
   finally
-    Fann.Free;
+    Train.Free;
   end;
+
+  FillNeuronsToList;
+  DrawFann;
 end;
 
 procedure TForm1.btnDrawClick(Sender: TObject);
@@ -225,16 +218,13 @@ begin
   FannStream.Position := 0;
   Fann                := TFannclass.Create(FannStream);
   try
-    if Assigned(Fann) then
-    begin
-      for i   := 0 to 1 do
-        for j := 0 to 1 do
-        begin
-          _input  := [i, j];
-          _output := Fann.Run(_input);
-          mmo1.Lines.Add(Format('%f Xor %f = %f', [_input[0], _input[1], _output[0]]));
-        end;
-    end;
+    for i   := 0 to 1 do
+      for j := 0 to 1 do
+      begin
+        _input  := [i, j];
+        _output := Fann.Run(_input);
+        mmo1.Lines.Add(Format('%f Xor %f = %f', [_input[0], _input[1], _output[0]]));
+      end;
   finally
     Fann.Free;
   end;
@@ -285,56 +275,52 @@ end;
 
 procedure TForm1.btnTestClick(Sender: TObject);
 var
-  Fann: TFannclass;
   Train: TTrainclass;
 begin
   ClearMemo;
   FannStream.Position := 0;
-  Fann                := TFannclass.Create(FannStream);
+  Train               := TTrainclass.Create(FannStream);
   try
-    Train := TTrainclass.Create(Fann);
-    try
-      Train.epochs_between_reports := 1;
-      Train.FannEvent              := TrainEvent;
-      // Train.FannBreakEvent := TrainBreakEvent;
-      Train.desired_error := string(edtCError.Text).ToSingle;
-      Train.TestFromFannFile(FNParityTrain);
-    finally
-      Train.Free;
-    end;
+    Train.epochs_between_reports := 1;
+    Train.FannEvent              := TrainEvent;
+    // Train.FannBreakEvent := TrainBreakEvent;
+    Train.desired_error := string(edtCError.Text).ToSingle;
+    Train.TestFromFannFile(FNParityTrain);
+
     FannStream.Clear;
-    Fann.SaveToStream(FannStream);
-    FillNeuronsToList;
-    DrawFann;
+    Train.SaveToStream(FannStream);
   finally
-    Fann.Free;
+    Train.Free;
   end;
+
+  FillNeuronsToList;
+  DrawFann;
 end;
 
 procedure TForm1.btnTrainClick(Sender: TObject);
 var
-  Fann: TFannclass;
   Train: TTrainclass;
 begin
   ClearMemo;
-  Fann := TFannclass.Create([2, 3, 1]);
+  Train := TTrainclass.Create([2, 3, 1]);
   try
-    Train := TTrainclass.Create(Fann);
-    try
-      Train.epochs_between_reports := 1;
-      Train.FannEvent              := TrainEvent;
-      Train.desired_error          := string(edtError.Text).ToSingle;
-      Train.TrainFromFannFile(FNXorTrain);
-    finally
-      Train.Free;
-    end;
+    Train.MSEdifferenceCount     := 20;
+    Train.MSEdifference          := 0.00001;
+
+
+    Train.epochs_between_reports := 1;
+    Train.FannEvent              := TrainEvent;
+    Train.desired_error          := string(edtError.Text).ToSingle;
+    Train.TrainFromFannFile(FNXorTrain);
+
     FannStream.Clear;
-    Fann.SaveToStream(FannStream);
-    FillNeuronsToList;
-    DrawFann;
+    Train.SaveToStream(FannStream);
   finally
-    Fann.Free;
+    Train.Free;
   end;
+
+  FillNeuronsToList;
+  DrawFann;
 end;
 
 procedure TForm1.ClearMemo;
