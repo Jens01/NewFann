@@ -68,6 +68,9 @@ type
     FUseRandomWeigths: Boolean;
     FWeigthsMax: Single;
     FWeigthsMin: Single;
+    FMSEdifferenceQueue: TQueue<Single>;
+    FMSEdifferenceCount: Integer;
+    FMSEdifference: Single;
     procedure train_on_data(traindata: TTraindataclass);
     procedure test_on_data(traindata: TTraindataclass);
     function Getbit_fail_limit: Single;
@@ -80,15 +83,21 @@ type
     procedure Settraining_algorithm(const Value: Integer);
     function Gettrain_error_function: Integer;
     procedure Settrain_error_function(const Value: Integer);
-  protected
+    procedure SetFieldsToStandard;
+  strict protected
     Fann: TFannclass;
     Fdesired_error: Single;
     Fepochs_max: Integer;
     Fepochs_between_reports: Integer;
     procedure SetWewights(traindata: TTraindataclass);
+    function IsMSEDifference(MSE: Single): Boolean;
   public
-    constructor Create(ann: TFannclass);
+    constructor Create(NeuronsPerLayer: TArray<Integer>; NetWorkType: Integer = FANN_NETTYPE_LAYER; ConnectionRate: Single = 1);
+      reintroduce; overload;
+    constructor Create(S: TStream); reintroduce; overload;
     destructor Destroy; override;
+    procedure LoadFromStream(S: TStream);
+    procedure SaveToStream(S: TStream);
     procedure Train(traindata: TTraindataclass);
     procedure TrainFromFannFile(Filename: string);
     procedure Test(traindata: TTraindataclass);
@@ -105,7 +114,10 @@ type
     property WeigthsMax: Single read FWeigthsMax write FWeigthsMax;
     property WeigthsMin: Single read FWeigthsMin write FWeigthsMin;
     property FannEvent: TFannEvent read FFannEvent write FFannEvent;
+    property MSEdifference: Single read FMSEdifference write FMSEdifference;
+    property MSEdifferenceCount: Integer read FMSEdifferenceCount write FMSEdifferenceCount;
     property FannBreakEvent: TFannBreakEvent read FFannBreakEvent write FFannBreakEvent;
+    property ann: TFannclass read Fann;
   end;
 
   TCascadeclass = class(TTrainclass)
@@ -121,7 +133,7 @@ type
     function Getnum_candidate_groups: Integer;
     procedure Setnum_candidate_groups(const Value: Integer);
   public
-    constructor Create(ann: TFannclass); reintroduce;
+    constructor Create(InputNeuronCount, OutputNeuronCount: Integer); reintroduce;
     procedure TrainCascade(traindata: TTraindataclass);
     procedure TrainCascadeFromFannFile(Filename: string);
     property FannCascadeEvent: TFannCascadeEvent read FFannCascadeEvent write FFannCascadeEvent;
@@ -257,17 +269,11 @@ begin
         dd := StringToArray(ss);
         if Odd(i) then
         begin
-          if Length(dd) = FNum_InputNeurons then
-            AddInput(dd)
-          else
-            raise Exception.Create('Wrong File');
+          AddInput(dd);
         end
         else
         begin
-          if Length(dd) = FNum_OutputNeurons then
-            AddOutput(dd)
-          else
-            raise Exception.Create('Wrong File');
+          AddOutput(dd);
         end;
       end;
     end;
@@ -411,16 +417,28 @@ end;
 
 { TTrainclass }
 
-constructor TTrainclass.Create(ann: TFannclass);
+constructor TTrainclass.Create(NeuronsPerLayer: TArray<Integer>; NetWorkType: Integer = FANN_NETTYPE_LAYER;
+  ConnectionRate: Single = 1);
 begin
   inherited Create;
-  Fann                    := ann;
-  Fepochs_between_reports := 500;
-  Fepochs_max             := 5000;
-  Fdesired_error          := 0.001;
-  FUseRandomWeigths       := True;
-  FWeigthsMax             := 0.1;
-  FWeigthsMin             := -0.1;
+  FMSEdifferenceQueue := TQueue<Single>.Create;
+  // Fann                    := ann;
+  Fann := TFannclass.Create(NeuronsPerLayer, NetWorkType, ConnectionRate);
+  SetFieldsToStandard;
+end;
+
+constructor TTrainclass.Create(S: TStream);
+begin
+  inherited Create;
+  FMSEdifferenceQueue := TQueue<Single>.Create;
+  Fann                := TFannclass.Create(S);
+  SetFieldsToStandard;
+end;
+
+destructor TTrainclass.Destroy;
+begin
+  FMSEdifferenceQueue.Free;
+  inherited;
 end;
 
 procedure TTrainclass.train_on_data(traindata: TTraindataclass);
@@ -447,12 +465,7 @@ begin
         FFannBreakEvent(i, error, IsTrainingBreak);
     end;
     Inc(i);
-  until _is_desired_error_reached or (i >= Fepochs_max) or IsTrainingBreak;
-end;
-
-destructor TTrainclass.Destroy;
-begin
-  inherited;
+  until _is_desired_error_reached or (i >= Fepochs_max) or IsTrainingBreak or IsMSEDifference(error);
 end;
 
 function TTrainclass.Getbit_fail_limit: Single;
@@ -500,6 +513,36 @@ begin
   Result := Fann.train_stop_function;
 end;
 
+function TTrainclass.IsMSEDifference(MSE: Single): Boolean;
+var
+  _Mean, _StdDev: Single;
+begin
+  if FMSEdifferenceCount > 1 then
+  begin
+    FMSEdifferenceQueue.Enqueue(MSE);
+    if FMSEdifferenceQueue.Count > FMSEdifferenceCount then
+    begin
+      FMSEdifferenceQueue.Dequeue;
+      MeanAndStdDev(FMSEdifferenceQueue.ToArray, _Mean, _StdDev);
+      Result := _StdDev < FMSEdifference;
+    end
+    else
+      Result := False;
+  end
+  else
+    Result := False;
+end;
+
+procedure TTrainclass.LoadFromStream(S: TStream);
+begin
+  Fann.LoadFromStream(S);
+end;
+
+procedure TTrainclass.SaveToStream(S: TStream);
+begin
+  Fann.SaveToStream(S);
+end;
+
 procedure TTrainclass.Settrain_stop_function(const Value: Integer);
 begin
   Fann.train_stop_function := Value;
@@ -530,6 +573,18 @@ begin
   finally
     td.free;
   end;
+end;
+
+procedure TTrainclass.SetFieldsToStandard;
+begin
+  Fepochs_between_reports := 500;
+  Fepochs_max             := 5000;
+  Fdesired_error          := 0.001;
+  FUseRandomWeigths       := True;
+  FWeigthsMax             := 0.1;
+  FWeigthsMin             := -0.1;
+  FMSEdifferenceCount     := -1;
+  FMSEdifference          := 0.1;
 end;
 
 procedure TTrainclass.Train(traindata: TTraindataclass);
@@ -569,9 +624,9 @@ end;
 
 { TCascadeclass }
 
-constructor TCascadeclass.Create(ann: TFannclass);
+constructor TCascadeclass.Create(InputNeuronCount, OutputNeuronCount: Integer);
 begin
-  inherited Create(ann);
+  inherited Create([InputNeuronCount, OutputNeuronCount], FANN_NETTYPE_SHORTCUT, 1);
   Fmax_neurons := 30;
 end;
 
@@ -642,6 +697,7 @@ begin
   total_epochs    := 0;
   IsTrainingBreak := False;
   i               := 0;
+
   repeat
     total_epochs              := total_epochs + fann_train_outputs(Fann.ann, traindata.TrainData, Fdesired_error);
     error                     := fann.MSE;
@@ -657,9 +713,9 @@ begin
     end;
 
     IsBreak := _is_desired_error_reached or IsTrainingBreak;
-    if not IsBreak then
+    if not IsBreak and (fann.ann.MSE_value > 1E-4) then
     begin
-      if fann_initialize_candidates(Fann.ann) = 0 then
+      if (fann_initialize_candidates(Fann.ann) = 0) then
       begin
         // train new candidates
         total_epochs := total_epochs + fann_train_candidates(Fann.ann, traindata.TrainData);
@@ -672,7 +728,7 @@ begin
     end;
 
     Inc(i);
-  until (i >= Fmax_neurons) or IsBreak;
+  until (i >= Fmax_neurons) or IsBreak or IsMSEDifference(error);
 
   // Train outputs one last time but without any desired error
   total_epochs := total_epochs + fann_train_outputs(Fann.ann, traindata.TrainData, 0.0);
