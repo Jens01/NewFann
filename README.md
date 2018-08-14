@@ -16,3 +16,4 @@ https://github.com/Laex/Delphi-Artificial-Neural-Network-Library
 
 http://libfann.github.io/fann/docs/files/fann-h.html
 
+-there could be problems with trainings in the 64-bit-versions-
